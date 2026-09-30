@@ -1,0 +1,10 @@
+TRADER AGENT V1 - PRINCIPIOS
+
+1. El agente NO predice el futuro.
+2. Usa la última vela 4H CERRADA para la señal.
+3. El precio en vivo se actualiza aproximadamente cada 15 segundos.
+4. La probabilidad mostrada es histórica y ajustada; no es probabilidad cierta de la próxima operación.
+5. Un setup válido puede perder.
+6. La estrategia debe validarse con suficiente muestra y, posteriormente, walk-forward / out-of-sample.
+7. No aumentar riesgo solo porque varias operaciones anteriores hayan ganado.
+8. V1 no usa apalancamiento, Futures ni Margin.
