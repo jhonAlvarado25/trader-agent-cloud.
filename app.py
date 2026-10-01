@@ -19,9 +19,10 @@ from binance_readonly import (
     summarize_protection,
     permission_is_read_only,
 )
+from futures_lab import run_lab, leverage_table
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V3.3",
+    page_title="Trader Agent Cloud V4.0",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -42,8 +43,8 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V3.3")
-st.caption("Multi-timeframe · Pullback + Breakout/Retest · Walk-forward · Monte Carlo · Solo lectura")
+st.title("Trader Agent Cloud V4.0")
+st.caption("Spot + Futures Lab · LONG/SHORT · 1H/2H/4H · Bootstrap · Monte Carlo · Solo lectura")
 
 with st.sidebar:
     symbol = st.selectbox("Activo", list(CFG.symbols), index=list(CFG.symbols).index(CFG.primary_symbol))
@@ -126,6 +127,19 @@ def _readonly_client():
         return None
     return BinanceReadOnlyClient(api_key, api_secret)
 
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def cached_v4_lab(sym: str, years: int, simulations: int, lab_risk_pct: float):
+    return run_lab(
+        sym,
+        years=years,
+        timeframes=("1h","2h","4h"),
+        stops=(1.0,1.25,1.5),
+        rrs=(1.5,2.0,2.5,3.0),
+        simulations=simulations,
+        risk_per_trade_pct=lab_risk_pct,
+    )
+
 try:
     live = get_live_price(symbol)
     result = cached_analysis(symbol)
@@ -158,7 +172,7 @@ else:
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
-t2.metric("Estado V3.3", gate["state"])
+t2.metric("Estado V4.0", gate["state"])
 st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
 if setup:
@@ -423,6 +437,158 @@ else:
     except Exception as exc:
         st.error(f"Error al cargar la cuenta en modo lectura: {exc}")
 
+st.divider()
+st.header("FUTURES LAB V4.0")
+st.caption(
+    "Laboratorio histórico bajo demanda. Compara Spot LONG contra USDⓈ-M Futures LONG/SHORT "
+    "en 1H, 2H y 4H. Incluye comisiones, slippage, funding histórico, división temporal 60/20/20, "
+    "bootstrap y Monte Carlo. No ejecuta órdenes."
+)
+
+with st.expander("Configurar análisis V4.0", expanded=False):
+    lv1,lv2,lv3 = st.columns(3)
+    lab_symbol = lv1.selectbox(
+        "Activo del laboratorio",
+        list(CFG.symbols),
+        index=list(CFG.symbols).index(symbol) if symbol in CFG.symbols else 0,
+        key="v4_lab_symbol",
+    )
+    lab_years = lv2.select_slider(
+        "Años de historia",
+        options=[1,2,3,5],
+        value=5,
+        key="v4_lab_years",
+    )
+    lab_sims = lv3.selectbox(
+        "Simulaciones bootstrap",
+        [1000,2000,5000,10000],
+        index=1,
+        key="v4_lab_sims",
+    )
+    st.write(
+        "El grid prueba: Stop ATR **1.0 / 1.25 / 1.5**, Take Profit **1.5R / 2R / 2.5R / 3R**, "
+        "direcciones LONG y SHORT y temporalidades **1H / 2H / 4H**."
+    )
+    st.caption(
+        "Con 5 años y 10.000 simulaciones el análisis puede tardar varios minutos. "
+        "La tabla prioriza evidencia fuera de muestra; no significa que la primera fila vaya a ganar en el futuro."
+    )
+
+    if st.button("Ejecutar análisis estadístico V4.0", type="primary", use_container_width=True):
+        with st.spinner("Descargando historia Spot/Futures y ejecutando backtests..."):
+            try:
+                st.session_state["v4_lab_results"] = cached_v4_lab(
+                    lab_symbol, int(lab_years), int(lab_sims), float(risk_pct)
+                )
+                st.session_state["v4_lab_meta"] = {
+                    "symbol": lab_symbol,
+                    "years": int(lab_years),
+                    "simulations": int(lab_sims),
+                    "risk_pct": float(risk_pct),
+                }
+            except Exception as lab_exc:
+                st.session_state.pop("v4_lab_results", None)
+                st.error(f"El laboratorio no pudo completarse: {lab_exc}")
+
+lab_results = st.session_state.get("v4_lab_results")
+lab_meta = st.session_state.get("v4_lab_meta", {})
+
+if isinstance(lab_results, pd.DataFrame) and not lab_results.empty:
+    strong = int((lab_results["evidence"] == "FUERTE").sum())
+    promising = int((lab_results["evidence"] == "PROMETEDORA").sum())
+    insufficient = int((lab_results["evidence"] == "INSUFICIENTE").sum())
+
+    la,lb,lc,ld = st.columns(4)
+    la.metric("Configuraciones", f"{len(lab_results)}")
+    lb.metric("Evidencia fuerte", f"{strong}")
+    lc.metric("Prometedoras", f"{promising}")
+    ld.metric("Muestra insuficiente", f"{insufficient}")
+
+    if strong == 0:
+        st.warning(
+            "Ninguna configuración supera todavía el criterio FUERTE: ≥200 operaciones en TEST, "
+            "IC95% de expectativa > 0, Profit Factor ≥1,20 y probabilidad bootstrap positiva ≥95%. "
+            "Esto es información útil: no debemos aumentar riesgo solo por encontrar un backtest atractivo."
+        )
+    else:
+        st.success(
+            "Hay configuraciones que superan el filtro estadístico FUERTE. "
+            "Deben seguir tratándose como evidencia histórica, no como garantía de beneficio futuro."
+        )
+
+    show = lab_results.head(30).copy()
+    show["Configuración"] = (
+        show["instrument"] + " " + show["direction"] + " " + show["timeframe"] +
+        " · SL " + show["stop_atr"].map(lambda x:f"{x:.2f}ATR") +
+        " · TP " + show["rr"].map(lambda x:f"{x:.1f}R")
+    )
+    table = pd.DataFrame({
+        "Evidencia": show["evidence"],
+        "Configuración": show["Configuración"],
+        "Ops TEST": show["trades_test"],
+        "Win TEST": show["win_test"].map(lambda x:f"{x*100:.1f}%"),
+        "Exp. TEST": show["expectancy_test_r"].map(lambda x:f"{x:+.3f}R"),
+        "IC95% bajo": show["ci_low"].map(lambda x:f"{x:+.3f}R"),
+        "IC95% alto": show["ci_high"].map(lambda x:f"{x:+.3f}R"),
+        "P(Exp>0)": show["prob_positive"].map(lambda x:f"{x*100:.1f}%"),
+        "PF TEST": show["pf_test"].map(lambda x:"∞" if math.isinf(x) else f"{x:.2f}"),
+        "R/año": show["r_per_year_test"].map(lambda x:f"{x:+.1f}"),
+        "Retorno proxy/año": show["return_proxy_pct_year_at_risk"].map(lambda x:f"{x:+.1f}%"),
+        "DD TEST": show["max_dd_test_r"].map(lambda x:f"{x:.1f}R"),
+        "Costo fee": show["avg_fee_r"].map(lambda x:f"{x:.3f}R"),
+        "Funding": show["avg_funding_r"].map(lambda x:f"{x:+.3f}R"),
+    })
+    st.dataframe(table, hide_index=True, use_container_width=True)
+
+    st.caption(
+        "Retorno proxy/año = R/año × riesgo configurado por operación. No incluye compounding y no es una proyección garantizada."
+    )
+
+    choices = []
+    for idx,row in show.head(15).iterrows():
+        choices.append((
+            int(idx),
+            f"{row['evidence']} · {row['instrument']} {row['direction']} {row['timeframe']} · "
+            f"SL {row['stop_atr']:.2f}ATR · TP {row['rr']:.1f}R · Exp {row['expectancy_test_r']:+.3f}R"
+        ))
+
+    selected_label = st.selectbox(
+        "Analizar eficiencia de apalancamiento de una configuración",
+        [x[1] for x in choices],
+        key="v4_selected_config",
+    )
+    selected_idx = next(x[0] for x in choices if x[1] == selected_label)
+    selected = lab_results.loc[selected_idx]
+
+    lev = leverage_table(selected, float(lab_meta.get("risk_pct", risk_pct)))
+    lev_display = lev.copy()
+    for col in ["Riesgo objetivo por trade","Nocional / capital","Margen aprox. / capital","Movimiento ~1/leverage"]:
+        lev_display[col] = lev_display[col].map(lambda x:f"{x:.2f}%")
+    st.dataframe(lev_display, hide_index=True, use_container_width=True)
+
+    st.info(
+        "En este cuadro el riesgo por operación se mantiene constante. Pasar de 1x a 2x/3x/5x "
+        "reduce el margen requerido para controlar el mismo nocional; no multiplica automáticamente la expectativa en R. "
+        "Usar el leverage para multiplicar el nocional sin respetar el Stop sí multiplica las pérdidas."
+    )
+
+    mc1,mc2,mc3,mc4 = st.columns(4)
+    mc1.metric("MC mediana 100 trades", f"{selected['mc_median_100']:+.1f}R")
+    mc2.metric("MC P5 100 trades", f"{selected['mc_p05_100']:+.1f}R")
+    mc3.metric("Prob. 100 trades < 0", f"{selected['mc_prob_negative_100']*100:.1f}%")
+    mc4.metric("Drawdown P95", f"{selected['mc_dd95_100']:.1f}R")
+
+    with st.expander("Cómo interpreta V4.0 la evidencia", expanded=False):
+        st.markdown("""
+**INSUFICIENTE:** la muestra o la estabilidad estadística todavía no justifican confianza alta.
+
+**PROMETEDORA:** al menos 75 operaciones TEST, expectativa positiva, PF ≥ 1,10 y bootstrap positivo ≥ 80%.
+
+**FUERTE:** al menos 200 operaciones TEST, límite inferior del IC95% de expectativa > 0, PF ≥ 1,20 y bootstrap positivo ≥ 95%.
+
+El conjunto de datos se separa cronológicamente **60% desarrollo / 20% validación / 20% TEST**. La clasificación utiliza principalmente el tramo TEST, no el resultado total.
+        """)
+
 st.subheader("Escáner de mercados")
 try:
     scan = cached_scanner()
@@ -488,10 +654,10 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-with st.expander("Monitor V3.3 / alertas al iPhone", expanded=False):
+with st.expander("Monitor V4.0 / alertas al iPhone", expanded=False):
     st.write("GitHub Actions despierta a los minutos 07, 22, 37 y 52 de cada hora para reducir el riesgo de retrasos del scheduler.")
     st.write("El análisis pesado se ejecuta una sola vez por cada nueva vela 4H cerrada; los intentos posteriores de la misma vela se omiten automáticamente.")
     st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte.")
-    st.write("Las operaciones siguen siendo manuales en Binance; no hay claves de trading ni permisos de retiro.")
+    st.write("Las operaciones siguen siendo manuales en Binance; V4.0 no contiene funciones para abrir Futures ni retirar fondos.")
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V3.3 es solo análisis; no accede ni opera tu cuenta.")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V4.0 es solo análisis; no accede ni opera tu cuenta.")
