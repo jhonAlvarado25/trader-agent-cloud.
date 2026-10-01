@@ -81,9 +81,11 @@ def make_signal(symbol: str) -> dict | None:
     }
 
     if levels:
+        limit_sl = float(levels["stop"]) * (1.0 - CFG.stop_limit_buffer_pct)
         signal.update({
             "entry": float(levels["entry"]),
             "stop": float(levels["stop"]),
+            "limit_sl": limit_sl,
             "take_profit": float(levels["tp"]),
             "risk_pct": float(levels["risk_pct"]),
             "rr": float(levels["rr"]),
