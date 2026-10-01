@@ -49,8 +49,8 @@ st.caption("Spot + Futures Lab · LONG/SHORT · 1H/2H/4H · Bootstrap · Monte C
 
 with st.sidebar:
     symbol = st.selectbox("Activo", list(CFG.symbols), index=list(CFG.symbols).index(CFG.primary_symbol))
-    capital = st.number_input("Presupuesto por operación (COP)", min_value=10_000.0, value=float(CFG.default_capital_cop), step=50_000.0)
-    risk_pct = st.number_input("Riesgo por operación (%)", min_value=0.05, max_value=2.0, value=CFG.default_risk_pct*100, step=0.05) / 100
+    capital = st.number_input("Presupuesto por operación (COP)", min_value=10_000.0, value=float(CFG.default_capital_cop), step=50_000.0, disabled=True)
+    risk_pct = st.number_input("Riesgo por operación (%)", min_value=0.05, max_value=2.0, value=CFG.default_risk_pct*100, step=0.05, disabled=True) / 100
     cop_per_usdt = st.number_input("COP por 1 USDT", min_value=1000.0, max_value=10000.0, value=float(CFG.default_cop_per_usdt), step=10.0)
     st.divider()
     st.write("**Costos asumidos**")
@@ -554,7 +554,7 @@ else:
         st.error(f"Error al cargar la cuenta en modo lectura: {exc}")
 
 st.divider()
-st.header("FUTURES LAB V4.0")
+st.header("FUTURES LAB V4.1")
 st.caption(
     "Laboratorio histórico bajo demanda. Compara Spot LONG contra USDⓈ-M Futures LONG/SHORT "
     "en 1H, 2H y 4H. Incluye comisiones, slippage, funding histórico, división temporal 60/20/20, "
