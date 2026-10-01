@@ -88,3 +88,21 @@ V3.1 corrige dos puntos observados en operación real:
 - El scheduler usa varios intentos por hora para reducir el impacto de retrasos de GitHub Actions.
 - El análisis pesado se ejecuta una sola vez por cada vela 4H y se omiten los reintentos redundantes.
 - Si un análisis presenta errores, la vela no se marca como completada para permitir un nuevo intento.
+
+
+## V3.2 — Orden Binance completa
+
+El dashboard incorpora un bloque **ORDEN BINANCE** cuando existe un setup activo.
+
+Muestra todos los datos operativos necesarios para una entrada Spot y su protección OCO:
+
+- Par y mercado.
+- Precio de entrada de referencia.
+- Total USDT.
+- Cantidad aproximada del activo.
+- Limit TP.
+- Stop / Trigger SL.
+- **Limit SL**.
+- Monto aproximado para la OCO.
+
+El Limit SL se calcula por defecto 0,12 % por debajo del Stop/Trigger SL. Después de una compra, conviene usar el 100 % del saldo realmente disponible de esa operación al crear la OCO, porque la comisión puede reducir ligeramente la cantidad del activo.
