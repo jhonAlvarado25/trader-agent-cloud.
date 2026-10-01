@@ -13,7 +13,7 @@ from setups import SETUP_PULLBACK, SETUP_BREAKOUT, diagnose_setups
 from monitor_status import get_last_scheduled_run, next_4h_close, format_local
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V3.1",
+    page_title="Trader Agent Cloud V3.2",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -34,7 +34,7 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V3.1")
+st.title("Trader Agent Cloud V3.2")
 st.caption("Multi-timeframe · Pullback + Breakout/Retest · Walk-forward · Monte Carlo · Solo lectura")
 
 with st.sidebar:
@@ -136,7 +136,7 @@ else:
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
-t2.metric("Estado V3", gate["state"])
+t2.metric("Estado V3.2", gate["state"])
 st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
 if setup:
@@ -169,6 +169,10 @@ if setup:
             levels["entry"], levels["stop"], levels["tp"], round_trip
         )
 
+        # Binance Spot OCO: el Limit SL queda ligeramente por debajo del Stop/Trigger.
+        limit_sl = levels["stop"] * (1.0 - CFG.stop_limit_buffer_pct)
+        pair_label = symbol[:-4] + "/USDT" if symbol.endswith("USDT") else symbol
+
         st.subheader("Plan de riesgo de referencia")
         p1,p2 = st.columns(2)
         p1.metric("Entrada ref.", f"{levels['entry']:,.2f}")
@@ -186,6 +190,54 @@ if setup:
 
         if risk["position_cap_hit"]:
             st.info("El límite de tamaño de posición (35% del capital) reduce el riesgo efectivo respecto al presupuesto máximo.")
+
+        st.subheader("ORDEN BINANCE")
+        if gate["state"] == "SETUP VÁLIDO":
+            st.success("Parámetros completos para copiar en Binance Spot. Verifica el precio real antes de confirmar.")
+        else:
+            st.warning("Estos valores son de referencia. No ejecutar una nueva entrada mientras el estado sea VIGILAR.")
+
+        ob1, ob2 = st.columns(2)
+        ob1.metric("Par", pair_label)
+        ob2.metric("Mercado", "SPOT")
+
+        st.markdown("**1. Entrada de referencia**")
+        ob3, ob4 = st.columns(2)
+        ob3.metric("Precio entrada", f"{levels['entry']:,.2f} USDT")
+        ob4.metric("Total a usar", f"{risk['position_usdt']:,.2f} USDT")
+        ob5, ob6 = st.columns(2)
+        ob5.metric("Cantidad aprox.", f"{risk['qty']:.8f}")
+        ob6.metric("R/R objetivo", f"1:{levels['rr']:.1f}")
+
+        st.markdown("**2. Protección OCO después de ejecutar la compra**")
+        oc1, oc2 = st.columns(2)
+        oc1.metric("Limit TP", f"{levels['tp']:,.2f} USDT")
+        oc2.metric("Stop / Trigger SL", f"{levels['stop']:,.2f} USDT")
+        oc3, oc4 = st.columns(2)
+        oc3.metric("Limit SL", f"{limit_sl:,.2f} USDT")
+        oc4.metric("Monto BTC aprox.", f"{risk['qty']:.8f}")
+
+        st.code(
+            f"""BINANCE SPOT
+PAR: {pair_label}
+
+ENTRADA
+Precio de referencia: {levels['entry']:.2f} USDT
+Total:                {risk['position_usdt']:.2f} USDT
+Cantidad aprox.:      {risk['qty']:.8f}
+
+OCO DE VENTA
+Limit TP:             {levels['tp']:.2f} USDT
+Stop / Trigger SL:    {levels['stop']:.2f} USDT
+Limit SL:             {limit_sl:.2f} USDT
+Monto aprox.:         {risk['qty']:.8f}""",
+            language="text"
+        )
+        st.caption(
+            f"Limit SL = Stop Trigger × (1 - {CFG.stop_limit_buffer_pct*100:.2f}%). "
+            "Después de la compra, si Binance descontó comisión del activo comprado, usa el 100% del saldo disponible de esa operación "
+            "en la OCO para evitar un error por saldo insuficiente. Una Stop-Limit puede no ejecutarse si el precio atraviesa el límite muy rápido."
+        )
 
     st.subheader("Validación temporal / Walk-forward")
     folds = result["setup_results"][setup]["folds"].copy()
@@ -288,10 +340,10 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-with st.expander("Monitor V3.1 / alertas al iPhone", expanded=False):
+with st.expander("Monitor V3.2 / alertas al iPhone", expanded=False):
     st.write("GitHub Actions despierta a los minutos 07, 22, 37 y 52 de cada hora para reducir el riesgo de retrasos del scheduler.")
     st.write("El análisis pesado se ejecuta una sola vez por cada nueva vela 4H cerrada; los intentos posteriores de la misma vela se omiten automáticamente.")
     st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte.")
     st.write("Las operaciones siguen siendo manuales en Binance; no hay claves de trading ni permisos de retiro.")
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V3.1 es solo análisis; no accede ni opera tu cuenta.")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V3.2 es solo análisis; no accede ni opera tu cuenta.")
