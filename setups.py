@@ -138,3 +138,48 @@ def build_levels(signal_row: pd.Series, next_open: float, setup: str, cfg: Strat
         "risk_pct": risk_abs / entry,
         "rr": cfg.reward_risk,
     }
+
+
+def diagnose_setups(row: pd.Series, cfg: StrategyConfig) -> dict:
+    """Explica por qué una vela cerrada cumple o no cada setup."""
+    close = float(row["close"])
+    ema20 = float(row["ema20"])
+    ema50 = float(row["ema50"])
+    ema200 = float(row["ema200"])
+    rsi_value = float(row["rsi"])
+    vol_ratio = float(row["vol_ratio"])
+    atr_value = float(row["atr"])
+    resistance = float(row["resistance_prev"]) if pd.notna(row["resistance_prev"]) else float("nan")
+
+    pullback = {
+        "Régimen 1D alcista": bool(row["daily_regime"]),
+        "Cierre > EMA50": close > ema50,
+        "EMA20 > EMA50": ema20 > ema50,
+        "EMA50 > EMA200": ema50 > ema200,
+        f"RSI {cfg.pullback_rsi_min:.0f}-{cfg.pullback_rsi_max:.0f}": cfg.pullback_rsi_min <= rsi_value <= cfg.pullback_rsi_max,
+        f"Volumen ≥ {cfg.pullback_vol_ratio_min:.2f}x": vol_ratio >= cfg.pullback_vol_ratio_min,
+        f"Distancia EMA20 ≤ {cfg.pullback_max_ema20_atr:.2f} ATR": float(row["distance_ema20_atr"]) <= cfg.pullback_max_ema20_atr,
+        "Retroceso tocó zona EMA20": float(row["low"]) <= ema20 + 0.15 * atr_value,
+        "Cierre ≥ EMA20": close >= ema20,
+    }
+
+    breakout = {
+        "Régimen 1D alcista": bool(row["daily_regime"]),
+        "Ruptura sobre resistencia": (
+            pd.notna(row["resistance_prev"])
+            and close > resistance + cfg.breakout_buffer_atr * atr_value
+        ),
+        "Cierre > EMA20": close > ema20,
+        "EMA20 > EMA50": ema20 > ema50,
+        f"RSI {cfg.breakout_rsi_min:.0f}-{cfg.breakout_rsi_max:.0f}": cfg.breakout_rsi_min <= rsi_value <= cfg.breakout_rsi_max,
+        "Retest confirmado": bool(row.get("breakout_retest_signal", False)),
+    }
+
+    return {
+        "pullback": pullback,
+        "breakout": breakout,
+        "pullback_score": sum(bool(v) for v in pullback.values()),
+        "pullback_total": len(pullback),
+        "breakout_score": sum(bool(v) for v in breakout.values()),
+        "breakout_total": len(breakout),
+    }
