@@ -39,6 +39,8 @@ class StrategyConfig:
     pullback_stop_atr: float = 1.20
     breakout_stop_atr_below_level: float = 0.70
     stop_buffer_atr: float = 0.10
+    # OCO Binance: Limit SL ligeramente por debajo del Stop/Trigger SL.
+    stop_limit_buffer_pct: float = 0.0012  # 0,12 %
 
     # Costos estimados
     fee_each_side: float = 0.0010       # 0,10 %
