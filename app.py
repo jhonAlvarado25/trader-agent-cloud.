@@ -12,7 +12,7 @@ from risk import position_size
 from setups import SETUP_PULLBACK, SETUP_BREAKOUT
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V2",
+    page_title="Trader Agent Cloud V3",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -33,7 +33,7 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V2")
+st.title("Trader Agent Cloud V3")
 st.caption("Multi-timeframe · Pullback + Breakout/Retest · Walk-forward · Monte Carlo · Solo lectura")
 
 with st.sidebar:
@@ -102,7 +102,7 @@ setup = gate["setup"]
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
-t2.metric("Estado V2", gate["state"])
+t2.metric("Estado V3", gate["state"])
 st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
 if setup:
@@ -231,4 +231,4 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V2 es solo análisis; no accede ni opera tu cuenta.")
+with st.expander("Monitor V3 / alertas al iPhone", expanded=False):\n    st.write("El repositorio incluye un monitor programado con GitHub Actions.")\n    st.write("Revisa BTC, ETH, SOL y BNB después de cada cierre 4H y envía Telegram únicamente para **VIGILAR** o **SETUP VÁLIDO**.")\n    st.write("La configuración de Telegram se hace con secretos de GitHub; el dashboard no almacena el token.")\n\nst.caption(f"Fuente activa: {get_active_endpoint()} · V3 es solo análisis; no accede ni opera tu cuenta.")
