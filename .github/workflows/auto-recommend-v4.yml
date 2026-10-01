@@ -1,0 +1,116 @@
+name: Trader Agent V4.1 Auto Recommendations
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trader-agent-v4-auto
+  cancel-in-progress: false
+
+jobs:
+  auto-recommend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Restore recommendation history
+        uses: actions/cache/restore@v4
+        with:
+          path: .state/auto_alerts.json
+          key: trader-auto-state-${{ github.run_id }}
+          restore-keys: |
+            trader-auto-state-
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Evaluate automatic recommendations
+        run: python auto_monitor.py
+
+      - name: Save recommendation history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state/auto_alerts.json
+          key: trader-auto-state-${{ github.run_id }}
+
+      - name: Publish recommendation summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("auto_signals.json")
+          signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("# Trader Agent V4.1 — Recomendaciones automáticas\n\n")
+              f.write("Presupuesto por operación: **COP 1.000.000**  \n")
+              f.write("Riesgo máximo objetivo: **1,20% = COP 12.000**\n\n")
+
+              if not signals:
+                  f.write("No hay una nueva operación candidata en este ciclo.\n")
+              else:
+                  for s in signals:
+                      f.write(f"## {s['symbol']} — {s['instrument']} {s['direction']} {s['timeframe']}\n")
+                      f.write(f"- Evidencia: {s['evidence']}\n")
+                      f.write(f"- Entrada ref.: {s['entry']:.2f} USDT\n")
+                      f.write(f"- Stop: {s['stop']:.2f} USDT\n")
+                      f.write(f"- Take Profit: {s['take_profit']:.2f} USDT\n")
+                      if s.get("limit_sl") is not None:
+                          f.write(f"- Limit SL: {s['limit_sl']:.2f} USDT\n")
+                      f.write(f"- Nocional: {s['position_usdt']:.2f} USDT\n")
+                      f.write(f"- Cantidad: {s['qty']:.8f}\n")
+                      f.write(f"- Riesgo neto estimado: COP {s['net_loss_cop']:.0f}\n")
+                      f.write(f"- Beneficio neto estimado al TP: COP {s['net_gain_cop']:.0f}\n")
+                      if s["instrument"] == "FUTURES":
+                          f.write(f"- Margen: ISOLATED · {s['leverage']}x\n")
+                          f.write(f"- Margen aprox.: COP {s['margin_cop']:.0f}\n")
+                      f.write(f"- Expectativa TEST: {s['expectancy_r']:+.3f}R\n")
+                      f.write(f"- P(expectativa > 0): {s['prob_positive']*100:.1f}%\n\n")
+          PY
+
+      - name: Trigger notification when a candidate appears
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("auto_signals.json")
+          signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+          if not signals:
+              print("Sin nueva operación candidata.")
+              raise SystemExit(0)
+
+          for s in signals:
+              extra = (
+                  f" | {s['leverage']}x ISOLATED"
+                  if s["instrument"] == "FUTURES"
+                  else ""
+              )
+              print(
+                  f"::error title=Trader V4.1 - {s['symbol']}::"
+                  f"{s['instrument']} {s['direction']} {s['timeframe']}{extra} | "
+                  f"entrada {s['entry']:.2f} | TP {s['take_profit']:.2f} | "
+                  f"SL {s['stop']:.2f} | riesgo COP {s['net_loss_cop']:.0f}"
+              )
+
+          print("Hay una nueva operación candidata para revisión manual.")
+          raise SystemExit(1)
+          PY
