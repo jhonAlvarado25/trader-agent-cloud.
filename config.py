@@ -61,9 +61,19 @@ class StrategyConfig:
     oos_folds: int = 4
 
     # Gestión de riesgo
-    default_capital_cop: float = 1_500_000.0
-    default_risk_pct: float = 0.005   # 0,50 %
-    max_position_fraction: float = 0.35
+    default_capital_cop: float = 1_000_000.0
+    default_risk_pct: float = 0.012   # 1,20 %
+    max_position_fraction: float = 1.00
     default_cop_per_usdt: float = 3350.0
+
+    # V4.1 — recomendación automática
+    auto_timeframes: tuple[str, ...] = ("1h", "2h", "4h")
+    auto_history_years: int = 3
+    auto_stop_atr: float = 1.25
+    auto_reward_risk: float = 2.0
+    auto_bootstrap_sims: int = 1000
+    auto_max_entry_drift_atr: float = 0.50
+    auto_futures_leverage_promising: int = 2
+    auto_futures_leverage_strong: int = 3
 
 CFG = StrategyConfig()
