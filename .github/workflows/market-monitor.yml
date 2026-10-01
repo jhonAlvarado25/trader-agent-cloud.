@@ -1,4 +1,4 @@
-name: Trader Agent V3 Monitor
+name: Trader Agent V3.2 Monitor
 
 on:
   workflow_dispatch:
@@ -67,7 +67,7 @@ jobs:
           signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write("# Trader Agent V3\n\n")
+              f.write("# Trader Agent V3.2\\n\\n")
               if not signals:
                   f.write("Sin nuevas señales para revisar.\n")
               else:
@@ -82,8 +82,9 @@ jobs:
                       f.write(f"- Expectativa: {s['expectancy_r']:+.2f}R\n")
                       if s.get("entry") is not None:
                           f.write(f"- Entrada ref.: {s['entry']:.2f}\n")
-                          f.write(f"- Stop: {s['stop']:.2f}\n")
-                          f.write(f"- Take Profit: {s['take_profit']:.2f}\n")
+                          f.write(f"- Stop / Trigger SL: {s['stop']:.2f}\n")
+                          f.write(f"- Limit SL: {s['limit_sl']:.2f}\n")
+                          f.write(f"- Limit TP: {s['take_profit']:.2f}\n")
                       f.write("\n")
           PY
 
@@ -98,7 +99,7 @@ jobs:
           from pathlib import Path
 
           if os.getenv("TEST_ALERT", "").lower() == "true":
-              print("::error title=Trader Agent V3 - PRUEBA::Alerta de prueba para validar notificaciones en iPhone")
+              print("::error title=Trader Agent V3.2 - PRUEBA::Alerta de prueba para validar notificaciones en iPhone")
               raise SystemExit(1)
 
           path = Path("new_signals.json")
@@ -110,7 +111,7 @@ jobs:
 
           for s in signals:
               print(
-                  f"::error title=Trader Agent V3 - {s['symbol']}::{s['state']} | "
+                  f"::error title=Trader Agent V3.2 - {s['symbol']}::{s['state']} | "
                   f"{s['setup']} | expectativa {s['expectancy_r']:+.2f}R | "
                   f"edge {s['edge_pp']:+.1f} pp"
               )
