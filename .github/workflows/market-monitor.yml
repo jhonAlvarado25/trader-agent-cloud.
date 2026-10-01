@@ -2,6 +2,12 @@ name: Trader Agent V3 Monitor
 
 on:
   workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Forzar alerta de prueba en iPhone"
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "10 */4 * * *"
 
@@ -80,11 +86,18 @@ jobs:
           PY
 
       - name: Activar notificación si hay señal nueva
+        env:
+          TEST_ALERT: ${{ inputs.test_alert }}
         run: |
           python - <<'PY'
           import json
+          import os
           import sys
           from pathlib import Path
+
+          if os.getenv("TEST_ALERT", "").lower() == "true":
+              print("::error title=Trader Agent V3 - PRUEBA::Alerta de prueba para validar notificaciones en iPhone")
+              raise SystemExit(1)
 
           path = Path("new_signals.json")
           signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
