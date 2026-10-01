@@ -109,6 +109,7 @@ def main() -> int:
         print(f"[SKIP] Vela 4H {bucket} ya fue analizada correctamente.")
         return 0
 
+    Path("scan_performed.flag").write_text(bucket, encoding="utf-8")
     new_signals = []
     errors = 0
 
