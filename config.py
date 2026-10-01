@@ -68,10 +68,10 @@ class StrategyConfig:
 
     # V4.1 — recomendación automática
     auto_timeframes: tuple[str, ...] = ("1h", "2h", "4h")
-    auto_history_years: int = 3
+    auto_history_years: int = 5
     auto_stop_atr: float = 1.25
     auto_reward_risk: float = 2.0
-    auto_bootstrap_sims: int = 1000
+    auto_bootstrap_sims: int = 2000
     auto_max_entry_drift_atr: float = 0.50
     auto_futures_leverage_promising: int = 2
     auto_futures_leverage_strong: int = 3
