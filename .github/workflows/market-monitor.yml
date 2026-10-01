@@ -67,7 +67,7 @@ jobs:
           signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write("# Trader Agent V3.2\\n\\n")
+              f.write("# Trader Agent V3.2\n\n")
               if not signals:
                   f.write("Sin nuevas señales para revisar.\n")
               else:
@@ -110,10 +110,16 @@ jobs:
               raise SystemExit(0)
 
           for s in signals:
+              levels = ""
+              if s.get("entry") is not None:
+                  levels = (
+                      f" | entrada {s['entry']:.2f} | TP {s['take_profit']:.2f} | "
+                      f"SL {s['stop']:.2f} | Limit SL {s['limit_sl']:.2f}"
+                  )
               print(
                   f"::error title=Trader Agent V3.2 - {s['symbol']}::{s['state']} | "
                   f"{s['setup']} | expectativa {s['expectancy_r']:+.2f}R | "
-                  f"edge {s['edge_pp']:+.1f} pp"
+                  f"edge {s['edge_pp']:+.1f} pp{levels}"
               )
 
           print("Se detectó al menos una nueva oportunidad para revisión manual.")
