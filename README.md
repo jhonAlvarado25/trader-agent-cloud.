@@ -1,4 +1,4 @@
-# Trader Agent Cloud V3
+# Trader Agent Cloud V4.0
 
 V3 cuantitativa para análisis Spot con monitor programado y alertas para revisión. No ejecuta órdenes ni accede a una cuenta Binance.
 
@@ -127,3 +127,26 @@ La integración muestra:
 El módulo `binance_readonly.py` contiene únicamente solicitudes GET. No implementa compra, venta, cancelación, transferencia ni retiro.
 
 Las credenciales deben almacenarse en Streamlit Secrets, nunca en archivos del repositorio. Consulta `CONFIGURAR_BINANCE_SOLO_LECTURA.md`.
+
+
+## V4.0 — Futures Lab
+
+V4.0 incorpora un laboratorio estadístico bajo demanda para comparar:
+
+- Spot LONG.
+- USDⓈ-M Futures LONG y SHORT.
+- 1H, 2H y 4H.
+- Stops 1,00 / 1,25 / 1,50 ATR.
+- Targets 1,5R / 2R / 2,5R / 3R.
+- Hasta 5 años de historia.
+- Funding histórico Futures.
+- Separación temporal 60/20/20.
+- Bootstrap hasta 10.000 simulaciones.
+- Monte Carlo de 100 trades.
+- Escenarios de eficiencia de margen 1x / 2x / 3x / 5x.
+
+La clasificación **FUERTE** exige al menos 200 operaciones TEST, IC95% de expectativa por encima de cero, PF >= 1,20 y probabilidad bootstrap positiva >= 95%.
+
+Consulta `FUTURES_LAB_V4.md` para la metodología completa.
+
+V4.0 sigue siendo solo lectura/análisis: no abre posiciones Futures ni cambia leverage.
