@@ -11,9 +11,17 @@ from engine import prepare_symbol, quality_gate, provisional_levels
 from risk import position_size
 from setups import SETUP_PULLBACK, SETUP_BREAKOUT, diagnose_setups
 from monitor_status import get_last_scheduled_run, next_4h_close, format_local
+from binance_readonly import (
+    BinanceReadOnlyClient,
+    BinanceReadOnlyError,
+    balance_map,
+    base_asset_from_symbol,
+    summarize_protection,
+    permission_is_read_only,
+)
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V3.2",
+    page_title="Trader Agent Cloud V3.3",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -34,7 +42,7 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V3.2")
+st.title("Trader Agent Cloud V3.3")
 st.caption("Multi-timeframe · Pullback + Breakout/Retest · Walk-forward · Monte Carlo · Solo lectura")
 
 with st.sidebar:
@@ -104,6 +112,20 @@ def cached_scanner():
 def cached_monitor_status():
     return get_last_scheduled_run()
 
+def _streamlit_secret(name: str):
+    try:
+        value = st.secrets[name]
+        return str(value).strip() if value is not None else None
+    except Exception:
+        return None
+
+def _readonly_client():
+    api_key = _streamlit_secret("BINANCE_API_KEY")
+    api_secret = _streamlit_secret("BINANCE_API_SECRET")
+    if not api_key or not api_secret:
+        return None
+    return BinanceReadOnlyClient(api_key, api_secret)
+
 try:
     live = get_live_price(symbol)
     result = cached_analysis(symbol)
@@ -136,7 +158,7 @@ else:
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
-t2.metric("Estado V3.2", gate["state"])
+t2.metric("Estado V3.3", gate["state"])
 st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
 if setup:
@@ -275,6 +297,132 @@ else:
             f"ATR: **{current['atr_pct']*100:.2f}%**"
         )
 
+st.subheader("Mi cuenta Binance — SOLO LECTURA")
+ro_client = _readonly_client()
+
+if ro_client is None:
+    st.info(
+        "La integración está preparada, pero todavía faltan los secretos de Binance. "
+        "Añade BINANCE_API_KEY y BINANCE_API_SECRET en Streamlit Secrets. "
+        "No pegues las credenciales en GitHub ni en el chat."
+    )
+    st.caption("Consulta CONFIGURAR_BINANCE_SOLO_LECTURA.md en el repositorio.")
+else:
+    try:
+        permissions = ro_client.permissions()
+        readonly_ok = permission_is_read_only(permissions)
+        account = ro_client.account()
+        balances = balance_map(account)
+        base_asset = base_asset_from_symbol(symbol)
+        base_bal = balances.get(base_asset, {"free":0.0, "locked":0.0, "total":0.0})
+        usdt_bal = balances.get("USDT", {"free":0.0, "locked":0.0, "total":0.0})
+        orders = ro_client.open_orders(symbol)
+        protection = summarize_protection(orders)
+
+        if readonly_ok:
+            st.success("Conectado a Binance con permisos verificados de SOLO LECTURA.")
+        else:
+            st.error(
+                "La API está conectada, pero detecté uno o más permisos distintos de solo lectura. "
+                "Desactiva trading, futuros, margen y retiros en Binance antes de continuar."
+            )
+
+        ac1,ac2 = st.columns(2)
+        ac1.metric(f"{base_asset} total", f"{base_bal['total']:.8f}")
+        ac2.metric("USDT disponible", f"{usdt_bal['free']:.2f}")
+        ac3,ac4 = st.columns(2)
+        ac3.metric(f"{base_asset} libre", f"{base_bal['free']:.8f}")
+        ac4.metric(f"{base_asset} bloqueado", f"{base_bal['locked']:.8f}")
+
+        st.caption(
+            "Permisos: lectura={} · Spot/Margin trading={} · Futures={} · Margin={} · Retiros={}".format(
+                "Sí" if permissions.get("enableReading") else "No",
+                "Sí" if permissions.get("enableSpotAndMarginTrading") else "No",
+                "Sí" if permissions.get("enableFutures") else "No",
+                "Sí" if permissions.get("enableMargin") else "No",
+                "Sí" if permissions.get("enableWithdrawals") else "No",
+            )
+        )
+
+        if protection:
+            st.markdown("**Protección real detectada en Binance**")
+            pr1,pr2 = st.columns(2)
+            pr1.metric(
+                "Limit TP real",
+                "-" if protection["take_profit"] is None else f"{protection['take_profit']:,.2f} USDT"
+            )
+            pr2.metric(
+                "Stop / Trigger SL real",
+                "-" if protection["stop_trigger"] is None else f"{protection['stop_trigger']:,.2f} USDT"
+            )
+            pr3,pr4 = st.columns(2)
+            pr3.metric(
+                "Limit SL real",
+                "-" if protection["limit_sl"] is None else f"{protection['limit_sl']:,.2f} USDT"
+            )
+            pr4.metric("Cantidad protegida", f"{protection['qty']:.8f}")
+
+            if protection["stop_trigger"] and protection["take_profit"]:
+                dist_stop = (live - protection["stop_trigger"]) / live * 100
+                dist_tp = (protection["take_profit"] - live) / live * 100
+                st.write(
+                    f"Distancia actual al Stop: **{dist_stop:+.2f}%** · "
+                    f"Distancia al TP: **{dist_tp:+.2f}%**"
+                )
+        elif base_bal["total"] > 0:
+            st.warning(
+                f"Hay saldo {base_asset}, pero no detecté una orden SELL abierta de protección para {symbol}. "
+                "Revisa manualmente si esa posición debe tener Stop/TP."
+            )
+        else:
+            st.caption(f"No detecté saldo {base_asset} ni protección abierta para {symbol}.")
+
+        with st.expander("Órdenes abiertas reales", expanded=False):
+            if not orders:
+                st.write("No hay órdenes abiertas para este par.")
+            else:
+                rows = []
+                for o in orders:
+                    rows.append({
+                        "Lado": o.get("side"),
+                        "Tipo": o.get("type"),
+                        "Precio limit": float(o.get("price",0) or 0),
+                        "Stop trigger": float(o.get("stopPrice",0) or 0),
+                        "Cantidad": float(o.get("origQty",0) or 0),
+                        "Ejecutada": float(o.get("executedQty",0) or 0),
+                        "Estado": o.get("status"),
+                        "Order List": o.get("orderListId"),
+                    })
+                st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+        with st.expander("Últimas operaciones reales", expanded=False):
+            try:
+                trade_rows = ro_client.trades(symbol, 50)
+                if trade_rows:
+                    td = []
+                    for t in trade_rows[-20:][::-1]:
+                        tm = pd.to_datetime(int(t["time"]), unit="ms", utc=True).tz_convert("America/Bogota")
+                        td.append({
+                            "Fecha Colombia": tm.strftime("%d/%m/%Y %H:%M"),
+                            "Lado": "COMPRA" if t.get("isBuyer") else "VENTA",
+                            "Precio": float(t.get("price",0) or 0),
+                            "Cantidad": float(t.get("qty",0) or 0),
+                            "Total": float(t.get("quoteQty",0) or 0),
+                            "Comisión": float(t.get("commission",0) or 0),
+                            "Activo comisión": t.get("commissionAsset"),
+                        })
+                    st.dataframe(pd.DataFrame(td), hide_index=True, use_container_width=True)
+                else:
+                    st.write("No hay operaciones recientes para este par.")
+            except Exception as trade_exc:
+                st.warning(f"No pude consultar el historial de trades: {trade_exc}")
+
+    except BinanceReadOnlyError as exc:
+        st.error(f"No fue posible leer la cuenta Binance: {exc}")
+        st.caption("Verifica la API Key, API Secret, permisos y configuración de restricciones.")
+    except Exception as exc:
+        st.error(f"Error al cargar la cuenta en modo lectura: {exc}")
+
 st.subheader("Escáner de mercados")
 try:
     scan = cached_scanner()
@@ -340,10 +488,10 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-with st.expander("Monitor V3.2 / alertas al iPhone", expanded=False):
+with st.expander("Monitor V3.3 / alertas al iPhone", expanded=False):
     st.write("GitHub Actions despierta a los minutos 07, 22, 37 y 52 de cada hora para reducir el riesgo de retrasos del scheduler.")
     st.write("El análisis pesado se ejecuta una sola vez por cada nueva vela 4H cerrada; los intentos posteriores de la misma vela se omiten automáticamente.")
     st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte.")
     st.write("Las operaciones siguen siendo manuales en Binance; no hay claves de trading ni permisos de retiro.")
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V3.2 es solo análisis; no accede ni opera tu cuenta.")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V3.3 es solo análisis; no accede ni opera tu cuenta.")
