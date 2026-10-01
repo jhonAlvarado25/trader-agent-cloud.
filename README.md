@@ -1,6 +1,6 @@
-# Trader Agent Cloud V2
+# Trader Agent Cloud V3
 
-V2 cuantitativa para análisis Spot. No ejecuta órdenes ni accede a una cuenta Binance.
+V3 cuantitativa para análisis Spot con monitor automático y alertas Telegram. No ejecuta órdenes ni accede a una cuenta Binance.
 
 ## Cambios principales frente a V1
 
@@ -62,3 +62,18 @@ Reemplaza los archivos de tu repositorio V1 por los de este proyecto o crea un r
 El entrypoint sigue siendo `app.py`.
 
 Streamlit Community Cloud detectará el commit y volverá a desplegar.
+
+
+## V3 — Monitor automático y alertas
+
+La V3 agrega:
+
+- GitHub Actions programado después de cada cierre 4H.
+- Alertas Telegram para **VIGILAR** y **SETUP VÁLIDO**.
+- Sin alertas para **NO OPERAR**.
+- Anti-duplicados por activo + estado + setup + vela.
+- Enlace opcional al dashboard.
+- Variables de capital/riesgo configurables desde GitHub.
+- Sigue sin API keys de Binance y sin ejecución automática.
+
+Consulta `CONFIGURAR_TELEGRAM_V3.md` para activar las alertas.
