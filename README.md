@@ -1,6 +1,6 @@
-# Trader Agent Cloud V2
+# Trader Agent Cloud V3
 
-V2 cuantitativa para análisis Spot. No ejecuta órdenes ni accede a una cuenta Binance.
+V3 cuantitativa para análisis Spot con monitor programado y alertas para revisión. No ejecuta órdenes ni accede a una cuenta Binance.
 
 ## Cambios principales frente a V1
 
@@ -62,3 +62,18 @@ Reemplaza los archivos de tu repositorio V1 por los de este proyecto o crea un r
 El entrypoint sigue siendo `app.py`.
 
 Streamlit Community Cloud detectará el commit y volverá a desplegar.
+
+
+## V3 — Monitor automático
+
+La V3 añade un monitor independiente del dashboard:
+
+- Ejecuta el análisis aproximadamente 10 minutos después de cada cierre 4H.
+- Revisa BTCUSDT, ETHUSDT, SOLUSDT y BNBUSDT.
+- Solo considera **VIGILAR** y **SETUP VÁLIDO** como estados de alerta.
+- Evita duplicados por activo + estado + setup + vela.
+- Publica un resumen del run con métricas OOS y niveles de referencia.
+- Si aparece una señal nueva, el workflow termina en alerta para activar notificaciones de GitHub.
+- La ejecución de órdenes sigue siendo manual.
+
+Consulta `CONFIGURAR_ALERTAS_V3.md` para configurar las notificaciones en iPhone.

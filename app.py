@@ -12,7 +12,7 @@ from risk import position_size
 from setups import SETUP_PULLBACK, SETUP_BREAKOUT
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V2",
+    page_title="Trader Agent Cloud V3",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -33,7 +33,7 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V2")
+st.title("Trader Agent Cloud V3")
 st.caption("Multi-timeframe · Pullback + Breakout/Retest · Walk-forward · Monte Carlo · Solo lectura")
 
 with st.sidebar:
@@ -102,7 +102,7 @@ setup = gate["setup"]
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
-t2.metric("Estado V2", gate["state"])
+t2.metric("Estado V3", gate["state"])
 st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
 if setup:
@@ -231,4 +231,10 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V2 es solo análisis; no accede ni opera tu cuenta.")
+with st.expander("Monitor V3 / alertas al iPhone", expanded=False):
+    st.write("El repositorio incluye un monitor programado con GitHub Actions.")
+    st.write("Revisa BTC, ETH, SOL y BNB aproximadamente 10 minutos después de cada cierre de vela 4H.")
+    st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte en el iPhone.")
+    st.write("Las operaciones siguen siendo manuales en Binance.")
+
+st.caption(f"Fuente activa: {get_active_endpoint()} · V3 es solo análisis; no accede ni opera tu cuenta.")
