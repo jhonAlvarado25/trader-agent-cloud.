@@ -41,6 +41,9 @@ class StrategyConfig:
     stop_buffer_atr: float = 0.10
     # OCO Binance: Limit SL ligeramente por debajo del Stop/Trigger SL.
     stop_limit_buffer_pct: float = 0.0012  # 0,12 %
+    # Monitor de posición real: avisar al acercarse a SL/TP.
+    position_alert_distance_pct: float = 0.005  # 0,50 %
+    min_position_notional_usdt: float = 5.0
 
     # Costos estimados
     fee_each_side: float = 0.0010       # 0,10 %
