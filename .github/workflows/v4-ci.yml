@@ -1,0 +1,40 @@
+name: Trader Agent V4 CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Syntax
+        run: |
+          python -m py_compile             app.py config.py market.py futures_market.py futures_lab.py             engine.py indicators.py setups.py backtest.py risk.py             binance_readonly.py monitor.py monitor_status.py
+
+      - name: Import smoke test
+        run: |
+          python - <<'PY'
+          import futures_lab
+          import futures_market
+          import binance_readonly
+          import engine
+          print("Trader Agent V4 imports OK")
+          PY
