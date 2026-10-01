@@ -106,3 +106,24 @@ Muestra todos los datos operativos necesarios para una entrada Spot y su protecc
 - Monto aproximado para la OCO.
 
 El Limit SL se calcula por defecto 0,12 % por debajo del Stop/Trigger SL. Después de una compra, conviene usar el 100 % del saldo realmente disponible de esa operación al crear la OCO, porque la comisión puede reducir ligeramente la cantidad del activo.
+
+
+## V3.3 — Binance solo lectura
+
+El dashboard puede conectarse a una cuenta Binance mediante una API HMAC configurada exclusivamente con permiso de lectura.
+
+La integración muestra:
+- saldo Spot libre, bloqueado y total;
+- USDT disponible;
+- órdenes abiertas del activo seleccionado;
+- Limit TP real;
+- Stop / Trigger SL real;
+- Limit SL real;
+- cantidad protegida;
+- distancia del precio actual a SL y TP;
+- últimas operaciones/fills;
+- verificación de permisos de la API.
+
+El módulo `binance_readonly.py` contiene únicamente solicitudes GET. No implementa compra, venta, cancelación, transferencia ni retiro.
+
+Las credenciales deben almacenarse en Streamlit Secrets, nunca en archivos del repositorio. Consulta `CONFIGURAR_BINANCE_SOLO_LECTURA.md`.
