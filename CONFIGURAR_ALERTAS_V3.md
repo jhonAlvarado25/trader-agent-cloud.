@@ -29,14 +29,11 @@ El workflow está en:
 
 `.github/workflows/market-monitor.yml`
 
-Se ejecuta aproximadamente 10 minutos después de cada cierre de vela 4H:
+V3.1 usa varios intentos para reducir el impacto de retrasos de GitHub Actions.
 
-- 00:10 UTC
-- 04:10 UTC
-- 08:10 UTC
-- 12:10 UTC
-- 16:10 UTC
-- 20:10 UTC
+El workflow despierta a los minutos **07, 22, 37 y 52** de cada hora. Sin embargo, el análisis pesado se ejecuta **solo una vez por cada nueva vela 4H cerrada**. Los intentos posteriores de la misma vela se omiten automáticamente.
+
+Si un análisis falla por datos o conectividad, esa vela no se marca como completada y el siguiente intento vuelve a probar.
 
 Cuando no hay señal nueva, termina correctamente.
 

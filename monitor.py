@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
+
+import pandas as pd
 
 from config import CFG
 from engine import prepare_symbol, provisional_levels, quality_gate
@@ -13,22 +16,36 @@ OUTPUT = Path("new_signals.json")
 ALERT_STATES = {"VIGILAR", "SETUP VÁLIDO"}
 
 
-def load_state() -> set[str]:
+def load_state() -> dict:
     if not STATE_PATH.exists():
-        return set()
+        return {"sent_keys": [], "last_scan_bucket": None}
     try:
         data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-        return set(data.get("sent_keys", []))
+        if not isinstance(data, dict):
+            raise ValueError("Estado inválido")
+        data.setdefault("sent_keys", [])
+        data.setdefault("last_scan_bucket", None)
+        return data
     except Exception:
-        return set()
+        return {"sent_keys": [], "last_scan_bucket": None}
 
 
-def save_state(keys: set[str]) -> None:
+def save_state(state: dict) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    keys = list(dict.fromkeys(state.get("sent_keys", [])))[-250:]
+    payload = {
+        "sent_keys": keys,
+        "last_scan_bucket": state.get("last_scan_bucket"),
+        "last_scan_utc": state.get("last_scan_utc"),
+    }
     STATE_PATH.write_text(
-        json.dumps({"sent_keys": sorted(keys)[-250:]}, ensure_ascii=False, indent=2),
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def current_4h_bucket() -> str:
+    return pd.Timestamp.now(tz="UTC").floor("4h").isoformat()
 
 
 def make_signal(symbol: str) -> dict | None:
@@ -82,8 +99,19 @@ def make_signal(symbol: str) -> dict | None:
 
 
 def main() -> int:
-    sent = load_state()
+    state = load_state()
+    sent = set(state.get("sent_keys", []))
+    bucket = current_4h_bucket()
+    force_scan = (os.getenv("FORCE_SCAN") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    if not force_scan and state.get("last_scan_bucket") == bucket:
+        OUTPUT.write_text("[]", encoding="utf-8")
+        print(f"[SKIP] Vela 4H {bucket} ya fue analizada correctamente.")
+        return 0
+
+    Path("scan_performed.flag").write_text(bucket, encoding="utf-8")
     new_signals = []
+    errors = 0
 
     for symbol in CFG.symbols:
         try:
@@ -104,16 +132,26 @@ def main() -> int:
             )
 
         except Exception as exc:
+            errors += 1
             print(f"[ERROR] {symbol}: {type(exc).__name__}: {exc}")
 
-    save_state(sent)
+    state["sent_keys"] = list(sent)
+
+    if errors == 0:
+        state["last_scan_bucket"] = bucket
+        state["last_scan_utc"] = pd.Timestamp.now(tz="UTC").isoformat()
+        print(f"[STATE] Vela 4H marcada como analizada: {bucket}")
+    else:
+        print(f"[WARN] Hubo {errors} error(es); no se marca la vela como completada para permitir reintento.")
+
+    save_state(state)
     OUTPUT.write_text(
         json.dumps(new_signals, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
-    print(f"[DONE] nuevas señales: {len(new_signals)}")
-    return 0
+    print(f"[DONE] nuevas señales: {len(new_signals)} | errores: {errors}")
+    return 0 if errors == 0 else 2
 
 
 if __name__ == "__main__":

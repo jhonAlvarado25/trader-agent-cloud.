@@ -9,10 +9,11 @@ from config import CFG
 from market import get_live_price, get_active_endpoint
 from engine import prepare_symbol, quality_gate, provisional_levels
 from risk import position_size
-from setups import SETUP_PULLBACK, SETUP_BREAKOUT
+from setups import SETUP_PULLBACK, SETUP_BREAKOUT, diagnose_setups
+from monitor_status import get_last_scheduled_run, next_4h_close, format_local
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V3",
+    page_title="Trader Agent Cloud V3.1",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -33,7 +34,7 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V3")
+st.title("Trader Agent Cloud V3.1")
 st.caption("Multi-timeframe · Pullback + Breakout/Retest · Walk-forward · Monte Carlo · Solo lectura")
 
 with st.sidebar:
@@ -59,34 +60,49 @@ def cached_scanner():
             r = prepare_symbol(sym, CFG)
             gate = quality_gate(r, CFG)
             setup = gate["setup"]
+            row = r["current"]
+            diag = diagnose_setups(row, CFG)
+
+            item = {
+                "Activo": sym,
+                "Estado": gate["state"],
+                "Setup": setup or "-",
+                "Régimen": "Sí" if bool(row["daily_regime"]) else "No",
+                "Pullback": f"{diag['pullback_score']}/{diag['pullback_total']}",
+                "Breakout": f"{diag['breakout_score']}/{diag['breakout_total']}",
+                "RSI": float(row["rsi"]),
+                "Vol x": float(row["vol_ratio"]),
+                "ATR %": float(row["atr_pct"]) * 100,
+                "Exp R": None,
+                "Edge pp": None,
+                "PF": None,
+                "Ops OOS": 0,
+            }
+
             if setup:
                 s = r["setup_results"][setup]["stats_oos"]
-                rows.append({
-                    "Activo": sym,
-                    "Estado": gate["state"],
-                    "Setup": setup,
-                    "Prob. ajustada": s["adjusted_p"],
-                    "Break-even": s["breakeven_p"],
+                item.update({
+                    "Exp R": s["expectancy_r"],
                     "Edge pp": s["edge_pp"],
-                    "Expectativa R": s["expectancy_r"],
-                    "Profit Factor": s["profit_factor"],
+                    "PF": s["profit_factor"],
                     "Ops OOS": s["n"],
                 })
-            else:
-                rows.append({
-                    "Activo": sym,
-                    "Estado": gate["state"],
-                    "Setup": "-",
-                    "Prob. ajustada": None,
-                    "Break-even": None,
-                    "Edge pp": None,
-                    "Expectativa R": None,
-                    "Profit Factor": None,
-                    "Ops OOS": 0,
-                })
+            rows.append(item)
         except Exception as e:
-            rows.append({"Activo":sym,"Estado":"ERROR","Setup":"-","Detalle":str(e)})
+            rows.append({
+                "Activo": sym,
+                "Estado": "ERROR",
+                "Setup": "-",
+                "Régimen": "-",
+                "Pullback": "-",
+                "Breakout": "-",
+                "Detalle": str(e),
+            })
     return pd.DataFrame(rows)
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_monitor_status():
+    return get_last_scheduled_run()
 
 try:
     live = get_live_price(symbol)
@@ -99,6 +115,24 @@ except Exception as exc:
 gate = quality_gate(result, CFG)
 current = result["current"]
 setup = gate["setup"]
+diag = diagnose_setups(current, CFG)
+monitor_status = cached_monitor_status()
+
+st.subheader("Monitor automático")
+m1,m2,m3 = st.columns(3)
+m1.metric("Última vela 4H", format_local(current["close_time"]))
+m2.metric("Próximo cierre 4H", format_local(next_4h_close()))
+if monitor_status:
+    conclusion = monitor_status.get("conclusion") or monitor_status.get("status") or "desconocido"
+    label = "OK" if conclusion == "success" else ("ALERTA" if conclusion == "failure" else conclusion.upper())
+    m3.metric("Último monitor", label)
+    st.caption(
+        f"Última ejecución programada: {format_local(monitor_status['created_at'])} · "
+        f"Run #{monitor_status.get('run_number', '-')}. Hora Colombia (UTC-5)."
+    )
+else:
+    m3.metric("Último monitor", "Sin dato")
+    st.caption("No fue posible consultar el último run de GitHub. El análisis local del panel sigue funcionando.")
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
@@ -174,18 +208,41 @@ if setup:
     m4.metric("Drawdown P95", f"{mc['dd95_r']:.1f} R")
 else:
     st.info("No se calculan niveles de entrada porque no existe un setup activo en la última vela 4H cerrada.")
+    p1,p2 = st.columns(2)
+    p1.metric("Progreso Pullback", f"{diag['pullback_score']}/{diag['pullback_total']} condiciones")
+    p2.metric("Progreso Breakout", f"{diag['breakout_score']}/{diag['breakout_total']} condiciones")
+
+    missing_pullback = [k for k,v in diag["pullback"].items() if not v]
+    missing_breakout = [k for k,v in diag["breakout"].items() if not v]
+    with st.expander("¿Por qué todavía NO OPERAR?", expanded=True):
+        st.write("**Pullback — falta:** " + (" · ".join(missing_pullback) if missing_pullback else "ninguna condición"))
+        st.write("**Breakout/Retest — falta:** " + (" · ".join(missing_breakout) if missing_breakout else "ninguna condición"))
+        st.write(
+            f"RSI actual: **{current['rsi']:.1f}** · "
+            f"Volumen relativo: **{current['vol_ratio']:.2f}x** · "
+            f"ATR: **{current['atr_pct']*100:.2f}%**"
+        )
 
 st.subheader("Escáner de mercados")
 try:
     scan = cached_scanner()
-    if "Prob. ajustada" in scan.columns:
+    if not scan.empty:
         show = scan.copy()
-        show["Prob. ajustada"] = show["Prob. ajustada"].apply(lambda x: "" if pd.isna(x) else f"{x*100:.1f}%")
-        show["Break-even"] = show["Break-even"].apply(lambda x: "" if pd.isna(x) else f"{x*100:.1f}%")
-        show["Edge pp"] = show["Edge pp"].apply(lambda x: "" if pd.isna(x) else f"{x:+.1f}")
-        show["Expectativa R"] = show["Expectativa R"].apply(lambda x: "" if pd.isna(x) else f"{x:+.2f}")
-        show["Profit Factor"] = show["Profit Factor"].apply(lambda x: "" if pd.isna(x) else ("∞" if math.isinf(x) else f"{x:.2f}"))
-        st.dataframe(show, hide_index=True, use_container_width=True)
+        if "RSI" in show.columns:
+            show["RSI"] = show["RSI"].apply(lambda x: "" if pd.isna(x) else f"{x:.1f}")
+        if "Vol x" in show.columns:
+            show["Vol x"] = show["Vol x"].apply(lambda x: "" if pd.isna(x) else f"{x:.2f}x")
+        if "ATR %" in show.columns:
+            show["ATR %"] = show["ATR %"].apply(lambda x: "" if pd.isna(x) else f"{x:.2f}%")
+        if "Exp R" in show.columns:
+            show["Exp R"] = show["Exp R"].apply(lambda x: "" if pd.isna(x) else f"{x:+.2f}")
+        if "Edge pp" in show.columns:
+            show["Edge pp"] = show["Edge pp"].apply(lambda x: "" if pd.isna(x) else f"{x:+.1f}")
+        if "PF" in show.columns:
+            show["PF"] = show["PF"].apply(lambda x: "" if pd.isna(x) else ("∞" if math.isinf(x) else f"{x:.2f}"))
+        cols = [x for x in ["Activo","Estado","Setup","Régimen","Pullback","Breakout","RSI","Vol x","ATR %","Exp R","Edge pp","PF","Ops OOS"] if x in show.columns]
+        st.dataframe(show[cols], hide_index=True, use_container_width=True)
+        st.caption("Pullback y Breakout muestran cuántas condiciones cumple cada activo, incluso cuando el estado es NO OPERAR.")
 except Exception as exc:
     st.warning(f"El escáner no pudo actualizar todos los activos: {exc}")
 
@@ -231,10 +288,10 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-with st.expander("Monitor V3 / alertas al iPhone", expanded=False):
-    st.write("El repositorio incluye un monitor programado con GitHub Actions.")
-    st.write("Revisa BTC, ETH, SOL y BNB aproximadamente 10 minutos después de cada cierre de vela 4H.")
-    st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte en el iPhone.")
-    st.write("Las operaciones siguen siendo manuales en Binance.")
+with st.expander("Monitor V3.1 / alertas al iPhone", expanded=False):
+    st.write("GitHub Actions despierta a los minutos 07, 22, 37 y 52 de cada hora para reducir el riesgo de retrasos del scheduler.")
+    st.write("El análisis pesado se ejecuta una sola vez por cada nueva vela 4H cerrada; los intentos posteriores de la misma vela se omiten automáticamente.")
+    st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte.")
+    st.write("Las operaciones siguen siendo manuales en Binance; no hay claves de trading ni permisos de retiro.")
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V3 es solo análisis; no accede ni opera tu cuenta.")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V3.1 es solo análisis; no accede ni opera tu cuenta.")

@@ -77,3 +77,14 @@ La V3 añade un monitor independiente del dashboard:
 - La ejecución de órdenes sigue siendo manual.
 
 Consulta `CONFIGURAR_ALERTAS_V3.md` para configurar las notificaciones en iPhone.
+
+
+## V3.1 — Visibilidad y reintentos
+
+V3.1 corrige dos puntos observados en operación real:
+
+- El dashboard ahora muestra la última vela 4H cerrada, el próximo cierre y el estado del último monitor automático.
+- Incluso en **NO OPERAR** muestra RSI, ATR, volumen relativo y el avance de condiciones para Pullback y Breakout/Retest.
+- El scheduler usa varios intentos por hora para reducir el impacto de retrasos de GitHub Actions.
+- El análisis pesado se ejecuta una sola vez por cada vela 4H y se omiten los reintentos redundantes.
+- Si un análisis presenta errores, la vela no se marca como completada para permitir un nuevo intento.
