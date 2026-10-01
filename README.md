@@ -1,40 +1,64 @@
-# Trader Agent Cloud V1
+# Trader Agent Cloud V2
 
-Panel móvil/cloud para BTC/USDT en temporalidad 4H.
+V2 cuantitativa para análisis Spot. No ejecuta órdenes ni accede a una cuenta Binance.
 
-## Estado del proyecto
+## Cambios principales frente a V1
 
-**V1 = solo lectura.**
+- Regla de régimen en **1D**.
+- Entrada en **4H**.
+- Dos estrategias separadas:
+  - `PULLBACK`
+  - `BREAKOUT_RETEST`
+- Costos de trading y slippage incluidos en el backtest.
+- Entrada histórica al **open de la vela siguiente** para reducir look-ahead.
+- Operaciones no solapadas por estrategia.
+- Probabilidad ajustada Beta(5,5).
+- Break-even calculado con R ganadora/perdedora observada.
+- Edge estadístico en puntos porcentuales.
+- Walk-forward temporal en 4 bloques.
+- Monte Carlo empírico usando los R históricos.
+- Escáner: BTC, ETH, SOL y BNB.
+- Límite de posición al 35 % del capital.
+- Estados: `NO OPERAR`, `VIGILAR`, `SETUP VÁLIDO`.
 
-- No usa API keys.
-- No accede a tu cuenta Binance.
-- No ejecuta órdenes.
-- No usa Futures, Margin ni apalancamiento.
-- Consulta datos públicos de Binance.
+## Quality Gate
 
-## Funciones
+Para declarar `SETUP VÁLIDO`, la estrategia que está activa debe cumplir:
 
-- Precio BTC/USDT actualizado.
-- EMA20 / EMA50 / EMA200.
-- RSI(14).
-- ATR(14).
-- Volumen relativo.
-- Stop técnico basado en ATR + swing.
-- Take Profit objetivo 2R.
-- Tamaño de posición en COP / USDT / BTC.
-- Backtest histórico.
-- Win rate bruto y ajustado.
-- Break-even.
-- Expectativa matemática en R.
-- Profit Factor.
-- Drawdown.
-- Monte Carlo.
-- Estados: NO OPERAR / VIGILAR / SETUP VÁLIDO.
+- >= 40 operaciones históricas totales.
+- >= 15 operaciones en la zona fuera de muestra (OOS).
+- Expectativa OOS >= +0,05R.
+- Profit Factor OOS >= 1,10.
+- Edge OOS > 0 puntos porcentuales.
+
+Los parámetros son deliberadamente conservadores y no garantizan resultados futuros.
+
+## Metodología
+
+### Régimen diario
+Se considera favorable cuando:
+- cierre 1D > EMA200,
+- EMA50 > EMA200,
+- pendiente EMA50 de 5 días > 0.
+
+### Pullback
+Busca tendencia 4H alcista y retroceso hacia EMA20, con RSI y volumen controlados.
+
+### Breakout + Retest
+Detecta ruptura de resistencia de 20 velas y exige un retesteo dentro de las siguientes 3 velas.
+
+### Backtest
+La señal se detecta al cierre de la vela. La entrada histórica se hace al open de la vela siguiente.
+Si Stop y TP ocurren en la misma vela, se contabiliza Stop primero como supuesto conservador.
+
+### Costos
+Por defecto:
+- fee: 0,10 % por lado,
+- slippage estimado: 0,02 % por lado.
 
 ## Despliegue
 
-Consulta `DEPLOY_IPHONE.md`.
+Reemplaza los archivos de tu repositorio V1 por los de este proyecto o crea un repositorio nuevo.
+El entrypoint sigue siendo `app.py`.
 
-## Nota metodológica
-
-Un `SETUP VÁLIDO` significa que las reglas predefinidas y los filtros estadísticos se cumplen. No representa una garantía ni una predicción cierta de rentabilidad. La estrategia debe someterse posteriormente a validación fuera de muestra / walk-forward antes de aumentar el capital.
+Streamlit Community Cloud detectará el commit y volverá a desplegar.

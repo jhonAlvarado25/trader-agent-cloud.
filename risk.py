@@ -3,34 +3,40 @@ from __future__ import annotations
 def position_size(
     capital_cop: float,
     risk_pct: float,
+    max_position_fraction: float,
     cop_per_usdt: float,
     entry: float,
     stop: float,
     tp: float,
-    fee_rate_round_trip: float = 0.002,
+    round_trip_cost_pct: float,
 ) -> dict:
-    risk_cop = capital_cop * risk_pct
-    risk_pct_trade = (entry - stop) / entry
-    if risk_pct_trade <= 0:
-        raise ValueError("Stop debe estar debajo de la entrada.")
+    stop_pct = (entry - stop) / entry
+    if stop_pct <= 0:
+        raise ValueError("Stop inválido")
 
-    position_cop = min(capital_cop, risk_cop / risk_pct_trade)
+    risk_budget_cop = capital_cop * risk_pct
+    unconstrained = risk_budget_cop / stop_pct
+    cap_limit = capital_cop * max_position_fraction
+    position_cop = min(unconstrained, cap_limit, capital_cop)
+
     position_usdt = position_cop / cop_per_usdt
     qty = position_usdt / entry
 
-    gross_loss_cop = position_cop * risk_pct_trade
-    gross_gain_cop = position_cop * ((tp - entry) / entry)
-    est_fees_cop = position_cop * fee_rate_round_trip
+    gross_loss = position_cop * stop_pct
+    gross_gain = position_cop * ((tp-entry)/entry)
+    costs = position_cop * round_trip_cost_pct
 
     return {
-        "risk_cop": risk_cop,
-        "risk_pct_trade": risk_pct_trade,
+        "risk_budget_cop": risk_budget_cop,
+        "stop_pct": stop_pct,
         "position_cop": position_cop,
         "position_usdt": position_usdt,
-        "qty_btc": qty,
-        "gross_loss_cop": gross_loss_cop,
-        "gross_gain_cop": gross_gain_cop,
-        "est_fees_cop": est_fees_cop,
-        "net_loss_cop": gross_loss_cop + est_fees_cop,
-        "net_gain_cop": gross_gain_cop - est_fees_cop,
+        "qty": qty,
+        "gross_loss_cop": gross_loss,
+        "gross_gain_cop": gross_gain,
+        "costs_cop": costs,
+        "net_loss_cop": gross_loss + costs,
+        "net_gain_cop": gross_gain - costs,
+        "position_cap_hit": unconstrained > cap_limit,
+        "actual_risk_pct_capital": (gross_loss + costs) / capital_cop,
     }

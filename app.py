@@ -6,247 +6,229 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 from config import CFG
-from market import get_live_price, get_klines
-from indicators import enrich
-from strategy import evaluate_row, build_levels
-from backtest import backtest, monte_carlo
+from market import get_live_price, get_active_endpoint
+from engine import prepare_symbol, quality_gate, provisional_levels
 from risk import position_size
+from setups import SETUP_PULLBACK, SETUP_BREAKOUT
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V1",
+    page_title="Trader Agent Cloud V2",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# Refresco de la app; el historial queda cacheado para no golpear Binance innecesariamente.
-st_autorefresh(interval=15_000, key="market_refresh")
+st_autorefresh(interval=15_000, key="refresh")
 
 st.markdown("""
 <style>
-.block-container {
-    padding-top: 1rem;
-    padding-bottom: 2rem;
-    max-width: 1250px;
-}
-div[data-testid="stMetric"] {
-    border: 1px solid rgba(120,120,120,0.20);
-    padding: 0.55rem 0.75rem;
-    border-radius: 0.75rem;
-}
-.small-note {
-    opacity: 0.72;
-    font-size: 0.86rem;
-}
-.status-card {
-    padding: 0.8rem 1rem;
-    border-radius: 0.8rem;
-    border: 1px solid rgba(120,120,120,0.22);
-    margin-bottom: 0.8rem;
-}
-@media (max-width: 700px) {
-    .block-container { padding-left: 0.7rem; padding-right: 0.7rem; }
-    h1 { font-size: 1.75rem !important; }
-    h2, h3 { font-size: 1.15rem !important; }
+.block-container{padding-top:1rem;padding-bottom:2rem;max-width:1250px}
+div[data-testid="stMetric"]{border:1px solid rgba(120,120,120,.20);padding:.55rem .75rem;border-radius:.75rem}
+.status{padding:.8rem 1rem;border-radius:.8rem;border:1px solid rgba(120,120,120,.22);margin:.4rem 0 .8rem 0}
+@media(max-width:700px){
+.block-container{padding-left:.65rem;padding-right:.65rem}
+h1{font-size:1.7rem!important}
+h2,h3{font-size:1.1rem!important}
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V1")
-st.caption("BTC/USDT · 4H · Solo lectura · Binance público · Diseñado para iPhone")
+st.title("Trader Agent Cloud V2")
+st.caption("Multi-timeframe · Pullback + Breakout/Retest · Walk-forward · Monte Carlo · Solo lectura")
 
 with st.sidebar:
-    st.header("Capital y riesgo")
-    capital_cop = st.number_input(
-        "Capital para trading (COP)",
-        min_value=10_000.0,
-        value=float(CFG.default_capital_cop),
-        step=50_000.0,
-    )
-    risk_pct = st.number_input(
-        "Riesgo por operación (%)",
-        min_value=0.05,
-        max_value=2.0,
-        value=CFG.default_risk_pct * 100,
-        step=0.05,
-    ) / 100
-    cop_per_usdt = st.number_input(
-        "COP por 1 USDT",
-        min_value=1000.0,
-        max_value=10000.0,
-        value=float(CFG.default_cop_per_usdt),
-        step=10.0,
-    )
+    symbol = st.selectbox("Activo", list(CFG.symbols), index=list(CFG.symbols).index(CFG.primary_symbol))
+    capital = st.number_input("Capital para trading (COP)", min_value=10_000.0, value=float(CFG.default_capital_cop), step=50_000.0)
+    risk_pct = st.number_input("Riesgo por operación (%)", min_value=0.05, max_value=2.0, value=CFG.default_risk_pct*100, step=0.05) / 100
+    cop_per_usdt = st.number_input("COP por 1 USDT", min_value=1000.0, max_value=10000.0, value=float(CFG.default_cop_per_usdt), step=10.0)
     st.divider()
-    st.write("**Filtros V1**")
-    st.write(f"R/R objetivo: 1:{CFG.reward_risk:.1f}")
-    st.write(f"Muestra mínima: {CFG.min_backtest_trades}")
-    st.write(f"Expectativa mínima: +{CFG.min_expectancy_r:.2f}R")
-    st.write(f"Profit Factor mínimo: {CFG.min_profit_factor:.2f}")
+    st.write("**Costos asumidos**")
+    st.write(f"Fee por lado: {CFG.fee_each_side*100:.2f}%")
+    st.write(f"Slippage por lado: {CFG.slippage_each_side*100:.2f}%")
+    st.write(f"Máx. posición: {CFG.max_position_fraction*100:.0f}% del capital")
 
-@st.cache_data(ttl=240, show_spinner=False)
-def load_history():
-    return get_klines(CFG.symbol, CFG.interval, CFG.history_bars)
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_analysis(sym: str):
+    return prepare_symbol(sym, CFG)
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_scanner():
+    rows = []
+    for sym in CFG.symbols:
+        try:
+            r = prepare_symbol(sym, CFG)
+            gate = quality_gate(r, CFG)
+            setup = gate["setup"]
+            if setup:
+                s = r["setup_results"][setup]["stats_oos"]
+                rows.append({
+                    "Activo": sym,
+                    "Estado": gate["state"],
+                    "Setup": setup,
+                    "Prob. ajustada": s["adjusted_p"],
+                    "Break-even": s["breakeven_p"],
+                    "Edge pp": s["edge_pp"],
+                    "Expectativa R": s["expectancy_r"],
+                    "Profit Factor": s["profit_factor"],
+                    "Ops OOS": s["n"],
+                })
+            else:
+                rows.append({
+                    "Activo": sym,
+                    "Estado": gate["state"],
+                    "Setup": "-",
+                    "Prob. ajustada": None,
+                    "Break-even": None,
+                    "Edge pp": None,
+                    "Expectativa R": None,
+                    "Profit Factor": None,
+                    "Ops OOS": 0,
+                })
+        except Exception as e:
+            rows.append({"Activo":sym,"Estado":"ERROR","Setup":"-","Detalle":str(e)})
+    return pd.DataFrame(rows)
 
 try:
-    with st.spinner("Actualizando mercado..."):
-        raw = load_history()
-        df = enrich(raw, CFG)
-        live = get_live_price(CFG.symbol)
-except Exception as e:
-    st.error("No fue posible consultar Binance en este momento.")
-    st.code(str(e))
-    st.info("La app es solo lectura y no usa claves API. Puedes volver a cargar en unos segundos.")
+    live = get_live_price(symbol)
+    result = cached_analysis(symbol)
+except Exception as exc:
+    st.error("No se pudo actualizar el mercado.")
+    st.code(str(exc))
     st.stop()
 
-now_utc = pd.Timestamp.now(tz="UTC")
-closed = df[df["close_time"] <= now_utc].copy()
-if len(closed) < 250:
-    st.error("No hay suficientes velas cerradas para calcular la estrategia.")
-    st.stop()
+gate = quality_gate(result, CFG)
+current = result["current"]
+setup = gate["setup"]
 
-current = closed.iloc[-1]
-ev = evaluate_row(current, CFG)
-levels = build_levels(current, CFG)
-trades, stats = backtest(closed, CFG)
-mc = monte_carlo(stats, CFG)
+t1,t2 = st.columns(2)
+t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
+t2.metric("Estado V2", gate["state"])
+st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
-sample_ok = stats["resolved"] >= CFG.min_backtest_trades
-expectancy_ok = stats["expectancy_r"] >= CFG.min_expectancy_r
-pf_ok = stats["profit_factor"] >= CFG.min_profit_factor
-current_ok = bool(ev.get("signal", False))
+if setup:
+    stats_all = result["setup_results"][setup]["stats_all"]
+    stats_oos = result["setup_results"][setup]["stats_oos"]
+    mc = result["setup_results"][setup]["mc"]
 
-if current_ok and sample_ok and expectancy_ok and pf_ok:
-    state = "SETUP VÁLIDO"
-    state_note = "Reglas técnicas cumplidas y evidencia histórica por encima de los mínimos V1."
-elif current_ok:
-    state = "VIGILAR"
-    state_note = "Existe señal técnica, pero la evidencia estadística todavía no supera todos los filtros."
+    a,b,c = st.columns(3)
+    a.metric("Setup actual", setup)
+    b.metric("Prob. ajustada OOS", f"{stats_oos['adjusted_p']*100:.1f}%")
+    c.metric("Edge vs break-even", f"{stats_oos['edge_pp']:+.1f} pp")
+
+    d,e,f = st.columns(3)
+    d.metric("Expectativa OOS", f"{stats_oos['expectancy_r']:+.2f} R")
+    e.metric("Profit Factor OOS", f"{stats_oos['profit_factor']:.2f}" if math.isfinite(stats_oos["profit_factor"]) else "∞")
+    f.metric("Operaciones OOS", f"{stats_oos['n']}")
+
+    with st.expander("Filtros del Quality Gate", expanded=False):
+        checks = pd.DataFrame([
+            {"Filtro":k, "Cumple":"Sí" if v else "No"}
+            for k,v in gate.get("checks", {}).items()
+        ])
+        st.dataframe(checks, hide_index=True, use_container_width=True)
+
+    levels = provisional_levels(result, CFG)
+    if levels:
+        round_trip = 2*(CFG.fee_each_side + CFG.slippage_each_side)
+        risk = position_size(
+            capital, risk_pct, CFG.max_position_fraction, cop_per_usdt,
+            levels["entry"], levels["stop"], levels["tp"], round_trip
+        )
+
+        st.subheader("Plan de riesgo de referencia")
+        p1,p2 = st.columns(2)
+        p1.metric("Entrada ref.", f"{levels['entry']:,.2f}")
+        p2.metric("Stop técnico", f"{levels['stop']:,.2f}", f"-{levels['risk_pct']*100:.2f}%")
+        p3,p4 = st.columns(2)
+        p3.metric("Take Profit", f"{levels['tp']:,.2f}", f"1:{levels['rr']:.1f}")
+        p4.metric("Posición sugerida", f"COP {risk['position_cop']:,.0f}")
+
+        q1,q2 = st.columns(2)
+        q1.metric("USDT", f"{risk['position_usdt']:,.2f}")
+        q2.metric("Cantidad aprox.", f"{risk['qty']:.8f}")
+        q3,q4 = st.columns(2)
+        q3.metric("Pérdida neta est.", f"COP {risk['net_loss_cop']:,.0f}")
+        q4.metric("Ganancia neta est.", f"COP {risk['net_gain_cop']:,.0f}")
+
+        if risk["position_cap_hit"]:
+            st.info("El límite de tamaño de posición (35% del capital) reduce el riesgo efectivo respecto al presupuesto máximo.")
+
+    st.subheader("Validación temporal / Walk-forward")
+    folds = result["setup_results"][setup]["folds"].copy()
+    if not folds.empty:
+        display_folds = folds.copy()
+        display_folds["Expectativa"] = display_folds["expectancy_r"].map(lambda x: f"{x:+.2f}R")
+        display_folds["PF"] = display_folds["profit_factor"].map(lambda x: f"{x:.2f}" if math.isfinite(x) else "∞")
+        display_folds["Edge"] = display_folds["edge_pp"].map(lambda x: f"{x:+.1f} pp")
+        st.dataframe(
+            display_folds[["fold","trades","Expectativa","PF","Edge","net_r"]],
+            hide_index=True, use_container_width=True
+        )
+
+    st.subheader("Monte Carlo empírico — 100 operaciones")
+    m1,m2 = st.columns(2)
+    m1.metric("Resultado mediano", f"{mc['median_r']:+.1f} R")
+    m2.metric("Prob. terminar negativo", f"{mc['prob_negative']*100:.1f}%")
+    m3,m4 = st.columns(2)
+    m3.metric("Percentil 5%", f"{mc['p05_r']:+.1f} R")
+    m4.metric("Drawdown P95", f"{mc['dd95_r']:.1f} R")
 else:
-    state = "NO OPERAR"
-    state_note = "La última vela 4H cerrada no cumple todas las condiciones del setup."
+    st.info("No se calculan niveles de entrada porque no existe un setup activo en la última vela 4H cerrada.")
 
-risk = position_size(
-    capital_cop,
-    risk_pct,
-    cop_per_usdt,
-    levels["entry"],
-    levels["stop"],
-    levels["tp"],
-)
+st.subheader("Escáner de mercados")
+try:
+    scan = cached_scanner()
+    if "Prob. ajustada" in scan.columns:
+        show = scan.copy()
+        show["Prob. ajustada"] = show["Prob. ajustada"].apply(lambda x: "" if pd.isna(x) else f"{x*100:.1f}%")
+        show["Break-even"] = show["Break-even"].apply(lambda x: "" if pd.isna(x) else f"{x*100:.1f}%")
+        show["Edge pp"] = show["Edge pp"].apply(lambda x: "" if pd.isna(x) else f"{x:+.1f}")
+        show["Expectativa R"] = show["Expectativa R"].apply(lambda x: "" if pd.isna(x) else f"{x:+.2f}")
+        show["Profit Factor"] = show["Profit Factor"].apply(lambda x: "" if pd.isna(x) else ("∞" if math.isinf(x) else f"{x:.2f}"))
+        st.dataframe(show, hide_index=True, use_container_width=True)
+except Exception as exc:
+    st.warning(f"El escáner no pudo actualizar todos los activos: {exc}")
 
-# Hora Colombia
-close_bogota = pd.Timestamp(current["close_time"]).tz_convert("America/Bogota")
-
-top1, top2 = st.columns(2)
-top1.metric("BTC/USDT en vivo", f"{live:,.2f} USDT")
-top2.metric("Estado V1", state)
-st.markdown(f'<div class="status-card"><b>{state}</b><br>{state_note}</div>', unsafe_allow_html=True)
-
-a,b,c = st.columns(3)
-a.metric("Prob. ajustada", f"{stats['adjusted_win_rate']*100:.1f}%")
-b.metric("Expectativa", f"{stats['expectancy_r']:+.2f} R")
-c.metric("Profit Factor", f"{stats['profit_factor']:.2f}" if math.isfinite(stats["profit_factor"]) else "∞")
-
-st.caption(
-    f"Última vela 4H cerrada: {close_bogota.strftime('%d/%m/%Y %H:%M')} Colombia · "
-    f"Refresco visual cada ~15 s · historial recalculado cada ~4 min"
-)
-
-st.subheader("Plan de operación de referencia")
-p1,p2 = st.columns(2)
-p1.metric("Entrada", f"{levels['entry']:,.2f} USDT")
-p2.metric("Stop técnico", f"{levels['stop']:,.2f} USDT", f"-{levels['risk_pct']*100:.2f}%")
-p3,p4 = st.columns(2)
-p3.metric("Take Profit", f"{levels['tp']:,.2f} USDT", f"1:{levels['rr']:.1f}")
-p4.metric("Posición sugerida", f"COP {risk['position_cop']:,.0f}")
-
-q1,q2 = st.columns(2)
-q1.metric("USDT a usar", f"{risk['position_usdt']:,.2f}")
-q2.metric("BTC aprox.", f"{risk['qty_btc']:.8f}")
-q3,q4 = st.columns(2)
-q3.metric("Pérdida neta estimada", f"COP {risk['net_loss_cop']:,.0f}")
-q4.metric("Ganancia neta estimada", f"COP {risk['net_gain_cop']:,.0f}")
-
-st.caption("Los niveles se calculan con la última vela 4H cerrada. Son un marco de riesgo, no una garantía de rentabilidad.")
-
-with st.expander("Ver condiciones técnicas", expanded=False):
-    gates = pd.DataFrame(
-        [{"Regla": k, "Cumple": "Sí" if v else "No"} for k, v in ev.get("gates", {}).items()]
-    )
-    st.dataframe(gates, hide_index=True, use_container_width=True)
+with st.expander("Indicadores y régimen actual", expanded=False):
+    st.write(f"Régimen 1D alcista: **{'Sí' if current['daily_regime'] else 'No'}**")
     st.write(
         f"EMA20: **{current['ema20']:,.2f}** · "
         f"EMA50: **{current['ema50']:,.2f}** · "
         f"EMA200: **{current['ema200']:,.2f}**"
     )
     st.write(
-        f"RSI(14): **{current['rsi']:.1f}** · "
-        f"ATR(14): **{current['atr']:,.2f} USDT ({current['atr_pct']*100:.2f}%)** · "
+        f"RSI: **{current['rsi']:.1f}** · "
+        f"ATR: **{current['atr']:,.2f} ({current['atr_pct']*100:.2f}%)** · "
         f"Volumen relativo: **{current['vol_ratio']:.2f}x**"
     )
 
-st.subheader("Validación histórica")
-b1,b2 = st.columns(2)
-b1.metric("Operaciones resueltas", f"{stats['resolved']}")
-b2.metric("Win rate bruto", f"{stats['raw_win_rate']*100:.1f}%")
-b3,b4 = st.columns(2)
-b3.metric("Break-even 1:2", f"{stats['breakeven_win_rate']*100:.1f}%")
-b4.metric("Máx. drawdown", f"{stats['max_drawdown_r']:.1f} R")
-
-st.write(
-    f"Resultado histórico: **{stats['net_r']:+.1f}R** · "
-    f"Duración media: **{stats['avg_holding_bars']*4:.1f} h** · "
-    f"Time stops: **{stats['time_stops']}**"
-)
-
-st.subheader("Monte Carlo — 100 operaciones")
-m1,m2 = st.columns(2)
-m1.metric("Resultado mediano", f"{mc['median_r']:+.1f} R")
-m2.metric("Prob. terminar negativo", f"{mc['prob_negative']*100:.1f}%")
-m3,m4 = st.columns(2)
-m3.metric("Percentil 5%", f"{mc['p05_r']:+.1f} R")
-m4.metric("Drawdown P95", f"{mc['dd95_r']:.1f} R")
-st.caption("Simulación basada en el backtest; no predice el resultado de la próxima operación.")
-
-with st.expander("Gráfico BTC/USDT 4H", expanded=False):
-    plot_df = closed.tail(180)
+with st.expander("Gráfico 4H", expanded=False):
+    df = result["df"].tail(180)
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
-        x=plot_df["close_time"], open=plot_df["open"], high=plot_df["high"],
-        low=plot_df["low"], close=plot_df["close"], name="BTC"
+        x=df["close_time"], open=df["open"], high=df["high"], low=df["low"], close=df["close"], name=symbol
     ))
-    fig.add_trace(go.Scatter(x=plot_df["close_time"], y=plot_df["ema20"], name="EMA20", mode="lines"))
-    fig.add_trace(go.Scatter(x=plot_df["close_time"], y=plot_df["ema50"], name="EMA50", mode="lines"))
-    fig.add_trace(go.Scatter(x=plot_df["close_time"], y=plot_df["ema200"], name="EMA200", mode="lines"))
-    fig.add_hline(y=levels["stop"], line_dash="dash", annotation_text="Stop")
-    fig.add_hline(y=levels["tp"], line_dash="dash", annotation_text="TP")
-    fig.update_layout(
-        height=520,
-        xaxis_rangeslider_visible=False,
-        margin=dict(l=5, r=5, t=10, b=5),
-        legend_orientation="h",
-    )
+    fig.add_trace(go.Scatter(x=df["close_time"], y=df["ema20"], name="EMA20", mode="lines"))
+    fig.add_trace(go.Scatter(x=df["close_time"], y=df["ema50"], name="EMA50", mode="lines"))
+    fig.add_trace(go.Scatter(x=df["close_time"], y=df["ema200"], name="EMA200", mode="lines"))
+    fig.update_layout(height=520, xaxis_rangeslider_visible=False, margin=dict(l=5,r=5,t=10,b=5), legend_orientation="h")
     st.plotly_chart(fig, use_container_width=True)
 
-with st.expander("Últimas operaciones del backtest", expanded=False):
-    if trades.empty:
-        st.warning("No se detectaron setups con los parámetros actuales.")
-    else:
-        show = trades.tail(20).copy()
-        show["signal_time"] = show["signal_time"].astype(str)
-        st.dataframe(show.sort_values("signal_time", ascending=False), hide_index=True, use_container_width=True)
+with st.expander("Resultados históricos por estrategia", expanded=False):
+    rows = []
+    for name,data in result["setup_results"].items():
+        s1 = data["stats_all"]
+        s2 = data["stats_oos"]
+        rows.append({
+            "Setup":name,
+            "Ops total":s1["n"],
+            "Exp total":round(s1["expectancy_r"],3),
+            "PF total":round(s1["profit_factor"],3) if math.isfinite(s1["profit_factor"]) else "∞",
+            "Ops OOS":s2["n"],
+            "Exp OOS":round(s2["expectancy_r"],3),
+            "PF OOS":round(s2["profit_factor"],3) if math.isfinite(s2["profit_factor"]) else "∞",
+            "Edge OOS pp":round(s2["edge_pp"],2),
+        })
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-with st.expander("Cómo leer el estado", expanded=False):
-    st.markdown("""
-**NO OPERAR**: falta alguna condición técnica del setup.
-
-**VIGILAR**: existe señal técnica, pero la muestra, expectativa o Profit Factor no supera todavía el filtro estadístico.
-
-**SETUP VÁLIDO**: la señal actual y los filtros estadísticos V1 se cumplen. Esto **no significa** que la operación vaya a ganar.
-
-La probabilidad es histórica y ajustada con una prior Beta(5,5) para evitar exceso de confianza en muestras pequeñas.
-""")
-
-st.divider()
-st.caption("Trader Agent Cloud V1 · Solo análisis · Spot · Sin API keys · Sin ejecución automática")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V2 es solo análisis; no accede ni opera tu cuenta.")
