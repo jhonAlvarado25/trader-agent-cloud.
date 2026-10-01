@@ -20,9 +20,10 @@ from binance_readonly import (
     permission_is_read_only,
 )
 from futures_lab import run_lab, leverage_table
+from auto_decision import automatic_recommendation
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V4.0",
+    page_title="Trader Agent Cloud V4.1",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -43,12 +44,12 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V4.0")
+st.title("Trader Agent Cloud V4.1")
 st.caption("Spot + Futures Lab · LONG/SHORT · 1H/2H/4H · Bootstrap · Monte Carlo · Solo lectura")
 
 with st.sidebar:
     symbol = st.selectbox("Activo", list(CFG.symbols), index=list(CFG.symbols).index(CFG.primary_symbol))
-    capital = st.number_input("Capital para trading (COP)", min_value=10_000.0, value=float(CFG.default_capital_cop), step=50_000.0)
+    capital = st.number_input("Presupuesto por operación (COP)", min_value=10_000.0, value=float(CFG.default_capital_cop), step=50_000.0)
     risk_pct = st.number_input("Riesgo por operación (%)", min_value=0.05, max_value=2.0, value=CFG.default_risk_pct*100, step=0.05) / 100
     cop_per_usdt = st.number_input("COP por 1 USDT", min_value=1000.0, max_value=10000.0, value=float(CFG.default_cop_per_usdt), step=10.0)
     st.divider()
@@ -140,6 +141,17 @@ def cached_v4_lab(sym: str, years: int, simulations: int, lab_risk_pct: float):
         risk_per_trade_pct=lab_risk_pct,
     )
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_auto_recommendation(sym: str, operation_budget: float, risk_fraction: float, cop_usdt: float):
+    return automatic_recommendation(
+        sym,
+        CFG,
+        operation_budget_cop=operation_budget,
+        risk_pct=risk_fraction,
+        cop_per_usdt=cop_usdt,
+    )
+
 try:
     live = get_live_price(symbol)
     result = cached_analysis(symbol)
@@ -172,7 +184,7 @@ else:
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
-t2.metric("Estado V4.0", gate["state"])
+t2.metric("Estado V4.1", gate["state"])
 st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
 if setup:
@@ -310,6 +322,110 @@ else:
             f"Volumen relativo: **{current['vol_ratio']:.2f}x** · "
             f"ATR: **{current['atr_pct']*100:.2f}%**"
         )
+
+st.divider()
+st.header("DECISIÓN AUTOMÁTICA V4.1")
+st.caption(
+    "Presupuesto máximo por operación: COP 1.000.000 · Riesgo objetivo: 1,20% = COP 12.000. "
+    "El agente evalúa 1H/2H/4H, compara Spot vs Futures y solo propone una operación cuando la señal "
+    "y la evidencia histórica mínima se cumplen. No ejecuta órdenes."
+)
+
+try:
+    auto = cached_auto_recommendation(symbol, float(capital), float(risk_pct), float(cop_per_usdt))
+except Exception as auto_exc:
+    auto = {
+        "state":"ERROR",
+        "reason":f"No se pudo completar la recomendación automática: {auto_exc}",
+        "symbol":symbol,
+    }
+
+ad1,ad2,ad3 = st.columns(3)
+ad1.metric("Estado automático", auto.get("state","-"))
+ad2.metric("Presupuesto", f"COP {float(auto.get('operation_budget_cop', capital)):,.0f}")
+ad3.metric("Riesgo máximo", f"COP {float(auto.get('risk_budget_cop', capital*risk_pct)):,.0f}")
+
+st.write(auto.get("reason",""))
+
+if auto.get("state") == "OPERACIÓN CANDIDATA":
+    st.success(
+        f"Instrumento sugerido por el modelo: **{auto['instrument']}** · "
+        f"{auto['direction']} · {auto['timeframe']} · evidencia {auto['evidence']}."
+    )
+
+    ar1,ar2,ar3,ar4 = st.columns(4)
+    ar1.metric("Entrada ref.", f"{auto['entry']:,.2f} USDT")
+    ar2.metric("Stop", f"{auto['stop']:,.2f} USDT")
+    ar3.metric("Take Profit", f"{auto['take_profit']:,.2f} USDT")
+    ar4.metric("R/R", f"1:{auto['rr']:.1f}")
+
+    as1,as2,as3,as4 = st.columns(4)
+    as1.metric("Posición / nocional", f"COP {auto['position_cop']:,.0f}")
+    as2.metric("USDT nocional", f"{auto['position_usdt']:,.2f}")
+    as3.metric("Cantidad", f"{auto['qty']:.8f}")
+    as4.metric("Riesgo neto est.", f"COP {auto['net_loss_cop']:,.0f}")
+
+    if auto["instrument"] == "SPOT":
+        st.markdown("**Valores para Binance Spot**")
+        st.code(
+            f"""PAR: {auto['symbol'][:-4]}/USDT
+MERCADO: SPOT
+DIRECCIÓN: COMPRA
+Total USDT:          {auto['position_usdt']:.2f}
+Cantidad aprox.:     {auto['qty']:.8f}
+Entrada referencia:  {auto['entry']:.2f}
+
+OCO DE VENTA
+Limit TP:            {auto['take_profit']:.2f}
+Stop / Trigger SL:   {auto['stop']:.2f}
+Limit SL:            {auto['limit_sl']:.2f}
+Monto aprox.:        {auto['qty']:.8f}""",
+            language="text"
+        )
+    else:
+        side_label = "LONG / BUY" if auto["direction"] == "LONG" else "SHORT / SELL"
+        st.markdown("**Valores para Binance USDⓈ-M Futures**")
+        ft1,ft2 = st.columns(2)
+        ft1.metric("Leverage sugerido", f"{auto['leverage']}x")
+        ft2.metric("Margen aislado aprox.", f"COP {auto['margin_cop']:,.0f}")
+        st.code(
+            f"""PAR: {auto['symbol']}
+MERCADO: USDⓈ-M FUTURES
+MODO DE MARGEN: ISOLATED
+DIRECCIÓN: {side_label}
+LEVERAGE: {auto['leverage']}x
+
+Nocional USDT:       {auto['position_usdt']:.2f}
+Margen aprox. USDT:  {auto['margin_usdt']:.2f}
+Cantidad aprox.:     {auto['qty']:.8f}
+Entrada referencia:  {auto['entry']:.2f}
+Stop Trigger:        {auto['stop']:.2f}
+Take Profit:         {auto['take_profit']:.2f}
+Reduce Only en SL/TP: Sí""",
+            language="text"
+        )
+
+    st.caption(
+        f"El dimensionamiento usa como máximo COP {auto['operation_budget_cop']:,.0f}, pero puede usar menos "
+        f"si el Stop exige reducir el tamaño para respetar el riesgo neto objetivo de {risk_pct*100:.2f}%. "
+        "El leverage reduce margen requerido; no aumenta el riesgo permitido."
+    )
+
+    stats = auto.get("stats",{})
+    with st.expander("Evidencia estadística de la recomendación", expanded=False):
+        ss1,ss2,ss3,ss4 = st.columns(4)
+        ss1.metric("Trades TEST", f"{stats.get('trades_test',0)}")
+        ss2.metric("Win TEST", f"{stats.get('win_test',0)*100:.1f}%")
+        ss3.metric("Expectativa TEST", f"{stats.get('expectancy_test_r',0):+.3f}R")
+        ss4.metric("Profit Factor", "-" if stats.get("pf_test") is None else f"{stats.get('pf_test'):.2f}")
+        st.write(
+            f"IC95% expectativa: **{stats.get('ci_low',0):+.3f}R a {stats.get('ci_high',0):+.3f}R** · "
+            f"P(expectativa > 0): **{stats.get('prob_positive',0)*100:.1f}%**"
+        )
+elif auto.get("state") == "ESPERAR":
+    st.warning(auto.get("reason","La señal existe, pero la entrada ya se alejó demasiado."))
+elif auto.get("state") == "NO OPERAR":
+    st.info("El agente seguirá esperando una configuración que supere tanto el filtro técnico como el estadístico.")
 
 st.subheader("Mi cuenta Binance — SOLO LECTURA")
 ro_client = _readonly_client()
@@ -654,10 +770,10 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-with st.expander("Monitor V4.0 / alertas al iPhone", expanded=False):
+with st.expander("Monitor V4.1 / alertas al iPhone", expanded=False):
     st.write("GitHub Actions despierta a los minutos 07, 22, 37 y 52 de cada hora para reducir el riesgo de retrasos del scheduler.")
     st.write("El análisis pesado se ejecuta una sola vez por cada nueva vela 4H cerrada; los intentos posteriores de la misma vela se omiten automáticamente.")
     st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte.")
     st.write("Las operaciones siguen siendo manuales en Binance; V4.0 no contiene funciones para abrir Futures ni retirar fondos.")
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V4.0 es solo análisis; no accede ni opera tu cuenta.")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V4.1 es solo análisis; no accede ni opera tu cuenta.")
