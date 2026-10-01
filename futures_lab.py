@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from futures_market import get_futures_klines, get_funding_history
+from market import get_klines
 
 
 TIMEFRAME_HOURS = {"1h": 1, "2h": 2, "4h": 4}
@@ -374,42 +375,74 @@ def run_lab(
 
     for tf in timeframes:
         bars = bars_for_years(tf, years)
-        raw = get_futures_klines(symbol, tf, bars)
-        df = enrich_lab(raw).dropna().reset_index(drop=True)
 
-        start_ms = int(df["open_time"].iloc[0].timestamp()*1000)
-        end_ms = int(df["close_time"].iloc[-1].timestamp()*1000)
+        # Datos reales Spot para la línea base LONG.
+        spot_raw = get_klines(symbol, tf, bars)
+        spot_df = enrich_lab(spot_raw).dropna().reset_index(drop=True)
+
+        # Datos reales USDⓈ-M Futures para LONG/SHORT + funding histórico.
+        fut_raw = get_futures_klines(symbol, tf, bars)
+        fut_df = enrich_lab(fut_raw).dropna().reset_index(drop=True)
+
+        start_ms = int(fut_df["open_time"].iloc[0].timestamp()*1000)
+        end_ms = int(fut_df["close_time"].iloc[-1].timestamp()*1000)
         funding = get_funding_history(symbol, start_ms, end_ms)
 
-        for direction in ("LONG","SHORT"):
-            for stop_atr in stops:
-                for rr in rrs:
-                    instruments = ("SPOT","FUTURES") if direction == "LONG" else ("FUTURES",)
-                    for instrument in instruments:
-                        trades = simulate_config(
-                            df, funding, direction, instrument,
-                            stop_atr, rr, tf, costs
-                        )
-                        stats = summarize_config(
-                            trades,
-                            df["open_time"].iloc[0],
-                            df["close_time"].iloc[-1],
-                            simulations,
-                            risk_per_trade_pct,
-                        )
-                        if not stats:
-                            continue
+        for stop_atr in stops:
+            for rr in rrs:
+                # Baseline Spot LONG.
+                spot_trades = simulate_config(
+                    spot_df,
+                    pd.DataFrame(columns=["funding_time","funding_rate"]),
+                    "LONG",
+                    "SPOT",
+                    stop_atr,
+                    rr,
+                    tf,
+                    costs,
+                )
+                spot_stats = summarize_config(
+                    spot_trades,
+                    spot_df["open_time"].iloc[0],
+                    spot_df["close_time"].iloc[-1],
+                    simulations,
+                    risk_per_trade_pct,
+                )
+                if spot_stats:
+                    results.append({
+                        "symbol": symbol,
+                        "instrument": "SPOT",
+                        "direction": "LONG",
+                        "timeframe": tf,
+                        "stop_atr": stop_atr,
+                        "rr": rr,
+                        **spot_stats,
+                    })
 
-                        row = {
-                            "symbol": symbol,
-                            "instrument": instrument,
-                            "direction": direction,
-                            "timeframe": tf,
-                            "stop_atr": stop_atr,
-                            "rr": rr,
-                            **stats,
-                        }
-                        results.append(row)
+                # Futures LONG y SHORT.
+                for direction in ("LONG","SHORT"):
+                    fut_trades = simulate_config(
+                        fut_df, funding, direction, "FUTURES",
+                        stop_atr, rr, tf, costs
+                    )
+                    fut_stats = summarize_config(
+                        fut_trades,
+                        fut_df["open_time"].iloc[0],
+                        fut_df["close_time"].iloc[-1],
+                        simulations,
+                        risk_per_trade_pct,
+                    )
+                    if not fut_stats:
+                        continue
+                    results.append({
+                        "symbol": symbol,
+                        "instrument": "FUTURES",
+                        "direction": direction,
+                        "timeframe": tf,
+                        "stop_atr": stop_atr,
+                        "rr": rr,
+                        **fut_stats,
+                    })
 
     out = pd.DataFrame(results)
     if out.empty:
@@ -422,7 +455,6 @@ def run_lab(
         ascending=[False,False,False,False],
     ).drop(columns=["_evidence_rank"]).reset_index(drop=True)
     return out
-
 
 def leverage_table(row: pd.Series, risk_per_trade_pct: float = 0.005) -> pd.DataFrame:
     notional = float(row.get("notional_fraction_account", float("nan")))
