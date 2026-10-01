@@ -1,4 +1,4 @@
-# Trader Agent Cloud V4.0
+# Trader Agent Cloud V4.1
 
 V3 cuantitativa para análisis Spot con monitor programado y alertas para revisión. No ejecuta órdenes ni accede a una cuenta Binance.
 
@@ -150,3 +150,29 @@ La clasificación **FUERTE** exige al menos 200 operaciones TEST, IC95% de expec
 Consulta `FUTURES_LAB_V4.md` para la metodología completa.
 
 V4.0 sigue siendo solo lectura/análisis: no abre posiciones Futures ni cambia leverage.
+
+
+## V4.1 — Decisión automática Spot vs Futures
+
+Parámetros operativos fijos:
+
+- Presupuesto máximo por operación: **COP 1.000.000**.
+- Riesgo neto objetivo por operación: **1,20% = COP 12.000**.
+- El tamaño real de la posición puede ser inferior a COP 1.000.000 si el Stop y los costos requieren reducir el nocional para respetar el riesgo.
+- Temporalidades evaluadas automáticamente: **1H, 2H y 4H**.
+- Stop automático base: **1,25 ATR** con validación de estructura.
+- Objetivo base: **2R**.
+- La entrada se descarta si el precio se aleja más de **0,50 ATR** del cierre de señal.
+
+La decisión automática compara evidencia histórica neta de costos:
+
+- Para LONG puede seleccionar **Spot o USDⓈ-M Futures**.
+- Para SHORT solo puede seleccionar **USDⓈ-M Futures**.
+- Futures usa **ISOLATED**.
+- Evidencia PROMETEDORA: leverage sugerido **2x**.
+- Evidencia FUERTE: leverage sugerido **3x**.
+- El leverage reduce margen requerido; no aumenta el riesgo permitido.
+
+Cuando existe una operación candidata, el panel calcula automáticamente entrada, Stop, TP, cantidad, USDT, nocional, margen y pérdida/beneficio estimados.
+
+El workflow `auto-recommend-v4.yml` revisa nuevas oportunidades aproximadamente una vez por hora y genera una alerta cuando aparece una operación candidata. La ejecución en Binance continúa siendo manual.
