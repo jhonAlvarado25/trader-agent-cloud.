@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from config import CFG
-from auto_decision import automatic_recommendation
+from auto_decision import automatic_recommendation, detect_current_candidates
 
 STATE_PATH = Path(".state/auto_alerts.json")
 OUTPUT = Path("auto_signals.json")
@@ -35,6 +35,18 @@ def save_state(state: dict) -> None:
 
 
 def make_signal(symbol: str) -> dict | None:
+    # Pre-scan ligero cada 15 minutos. Solo ejecutamos el backtest profundo
+    # si existe al menos una señal técnica completa en 1H/2H/4H.
+    candidates = detect_current_candidates(symbol, CFG)
+    if not candidates:
+        print(f"[{symbol}] NO OPERAR — sin señal técnica completa en 1H/2H/4H")
+        return None
+
+    summary = ", ".join(
+        f"{c['direction']} {c['timeframe']}" for c in candidates
+    )
+    print(f"[{symbol}] Pre-scan: {summary}. Ejecutando validación estadística.")
+
     rec = automatic_recommendation(
         symbol,
         CFG,
