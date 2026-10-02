@@ -141,20 +141,6 @@ def _archive_klines(symbol: str, interval: str, bars: int) -> pd.DataFrame:
         if part is not None and not part.empty:
             frames.append(part)
 
-    # Completar el mes actual con archivos diarios ya publicados.
-    current_month_start = now.normalize().replace(day=1)
-    day = current_month_start
-    yesterday = now.normalize() - pd.Timedelta(days=1)
-    while day <= yesterday:
-        stamp = day.strftime("%Y-%m-%d")
-        url = (
-            f"{VISION_BASE}/data/futures/um/daily/klines/"
-            f"{symbol}/{interval}/{symbol}-{interval}-{stamp}.zip"
-        )
-        part = _zip_csv(url)
-        if part is not None and not part.empty:
-            frames.append(part)
-        day += pd.Timedelta(days=1)
 
     if not frames:
         raise RuntimeError("Binance Vision no devolvió archivos Futures para este período.")
@@ -227,7 +213,8 @@ def get_futures_klines(symbol: str, interval: str, bars: int) -> pd.DataFrame:
         # El archivo público puede ir con retraso de un día. Para evitar señal obsoleta,
         # completar únicamente la cola reciente con Spot (proxy), manteniendo Futures
         # como fuente principal del backtest.
-        tail_n = min(120, int(bars))
+        hours = _interval_hours(interval)
+        tail_n = min(max(200, int(35*24/hours)), int(bars))
         spot_tail = get_spot_klines(symbol, interval, tail_n)
         cutoff = hist["open_time"].max()
         extra = spot_tail[spot_tail["open_time"] > cutoff]
