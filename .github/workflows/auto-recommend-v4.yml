@@ -85,6 +85,12 @@ jobs:
                       f.write(f"- P(expectativa > 0): {s['prob_positive']*100:.1f}%\n\n")
           PY
 
+      - name: Send Telegram alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python telegram_notify.py
+
       - name: Trigger notification when a candidate appears
         run: |
           python - <<'PY'
