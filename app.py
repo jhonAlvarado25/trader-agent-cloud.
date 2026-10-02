@@ -20,6 +20,7 @@ from binance_readonly import (
     permission_is_read_only,
 )
 from futures_lab import run_lab, leverage_table
+from futures_market import get_futures_data_source
 from auto_decision import automatic_recommendation
 
 st.set_page_config(
@@ -346,6 +347,7 @@ ad2.metric("Presupuesto", f"COP {float(auto.get('operation_budget_cop', capital)
 ad3.metric("Riesgo máximo", f"COP {float(auto.get('risk_budget_cop', capital*risk_pct)):,.0f}")
 
 st.write(auto.get("reason",""))
+st.caption(f"Fuente de datos Futures: {get_futures_data_source()}")
 
 if auto.get("state") == "OPERACIÓN CANDIDATA":
     st.success(
