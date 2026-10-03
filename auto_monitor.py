@@ -53,6 +53,7 @@ def make_signal(symbol: str) -> dict | None:
         operation_budget_cop=CFG.default_capital_cop,
         risk_pct=CFG.default_risk_pct,
         cop_per_usdt=CFG.default_cop_per_usdt,
+        candidates=candidates,
     )
 
     if rec.get("state") != "OPERACIÓN CANDIDATA":
