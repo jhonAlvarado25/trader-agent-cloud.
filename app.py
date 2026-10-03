@@ -10,7 +10,7 @@ from market import get_live_price, get_active_endpoint
 from engine import prepare_symbol, quality_gate, provisional_levels
 from risk import position_size
 from setups import SETUP_PULLBACK, SETUP_BREAKOUT, diagnose_setups
-from monitor_status import get_last_scheduled_run, next_4h_close, format_local
+from monitor_status import get_last_scheduled_run, next_monitor_run, format_local
 from binance_readonly import (
     BinanceReadOnlyClient,
     BinanceReadOnlyError,
@@ -184,8 +184,8 @@ monitor_status = cached_monitor_status()
 
 st.subheader("Monitor automático")
 m1,m2,m3 = st.columns(3)
-m1.metric("Última vela 4H", format_local(current["close_time"]))
-m2.metric("Próximo cierre 4H", format_local(next_4h_close()))
+m1.metric("Última vela base", format_local(current["close_time"]))
+m2.metric("Próximo escaneo cloud", format_local(next_monitor_run()))
 if monitor_status:
     conclusion = monitor_status.get("conclusion") or monitor_status.get("status") or "desconocido"
     label = "OK" if conclusion == "success" else ("ALERTA" if conclusion == "failure" else conclusion.upper())
