@@ -9,6 +9,14 @@ from futures_lab import LabCosts, bars_for_years, enrich_lab, simulate_config, s
 from risk import position_size_directional
 
 RANK={"INSUFICIENTE":0,"VALIDA":1,"PROMETEDORA":2,"FUERTE":3}
+_HISTORY_CACHE={}
+
+
+def _history(symbol,tf,bars):
+    key=(symbol,tf,int(bars))
+    if key not in _HISTORY_CACHE:
+        _HISTORY_CACHE[key]=get_klines(symbol,tf,int(bars))
+    return _HISTORY_CACHE[key].copy()
 
 
 def _last(df):
@@ -91,11 +99,16 @@ def _evidence(st,cfg):
 
 def _eval(symbol,c,cfg):
     tf=c["timeframe"]; d=c["direction"]
-    yrs=3 if tf=="30m" else cfg.auto_history_years
-    bars=bars_for_years(tf,yrs); costs=LabCosts(); out=[]
-
-    f=_mask(get_futures_klines(symbol,tf,bars),c).dropna().reset_index(drop=True)
-    funding=get_funding_history(symbol,int(f["open_time"].iloc[0].timestamp()*1000),int(f["close_time"].iloc[-1].timestamp()*1000))
+    yrs={"30m":1,"1h":2,"2h":3,"4h":4}.get(tf,2)
+    bars=bars_for_years(tf,yrs)
+    # Monitor rápido: precios Spot como proxy del perpetual. Reservamos costo
+    # adicional en Futures para no sobreestimar la ventaja cuando funding no
+    # está disponible desde el runner cloud.
+    costs=LabCosts(futures_fee_each_side=0.0008)
+    out=[]
+    base=_history(symbol,tf,bars)
+    f=_mask(base,c).dropna().reset_index(drop=True)
+    funding=pd.DataFrame(columns=["funding_time","funding_rate"])
     tr=simulate_config(f,funding,d,"FUTURES",cfg.auto_stop_atr,cfg.auto_reward_risk,tf,costs)
     st=summarize_config(tr,f["open_time"].iloc[0],f["close_time"].iloc[-1],cfg.auto_bootstrap_sims,cfg.default_risk_pct)
     if st:
@@ -103,7 +116,7 @@ def _eval(symbol,c,cfg):
         out.append({"instrument":"FUTURES","direction":d,"timeframe":tf,"setup":c["setup"],**st})
 
     if d=="LONG":
-        s=_mask(get_klines(symbol,tf,bars),c).dropna().reset_index(drop=True)
+        s=_mask(base,c).dropna().reset_index(drop=True)
         tr=simulate_config(s,pd.DataFrame(columns=["funding_time","funding_rate"]),"LONG","SPOT",cfg.auto_stop_atr,cfg.auto_reward_risk,tf,costs)
         st=summarize_config(tr,s["open_time"].iloc[0],s["close_time"].iloc[-1],cfg.auto_bootstrap_sims,cfg.default_risk_pct)
         if st:
@@ -124,11 +137,11 @@ def _levels(c,live,cfg):
     return {"entry":e,"stop":stop,"tp":tp,"rr":cfg.auto_reward_risk}
 
 
-def automatic_recommendation(symbol:str,cfg:StrategyConfig,operation_budget_cop=None,risk_pct=None,cop_per_usdt=None)->dict:
+def automatic_recommendation(symbol:str,cfg:StrategyConfig,operation_budget_cop=None,risk_pct=None,cop_per_usdt=None,candidates=None)->dict:
     budget=float(operation_budget_cop or cfg.default_capital_cop)
     risk=float(risk_pct or cfg.default_risk_pct)
     fx=float(cop_per_usdt or cfg.default_cop_per_usdt)
-    cs=detect_current_candidates(symbol,cfg)
+    cs=candidates if candidates is not None else detect_current_candidates(symbol,cfg)
     if not cs:
         return {"state":"NO OPERAR","reason":"Sin señal técnica en 30m/1H/2H/4H.","symbol":symbol,
                 "operation_budget_cop":budget,"risk_budget_cop":budget*risk}
