@@ -21,10 +21,10 @@ from binance_readonly import (
 )
 from futures_lab import run_lab, leverage_table
 from futures_market import get_futures_data_source
-from auto_decision import automatic_recommendation
+from auto_decision_v42 import automatic_recommendation
 
 st.set_page_config(
-    page_title="Trader Agent Cloud V4.1",
+    page_title="Trader Agent Cloud V4.2",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -45,7 +45,7 @@ h2,h3{font-size:1.1rem!important}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Trader Agent Cloud V4.1")
+st.title("Trader Agent Cloud V4.2")
 st.caption("Spot + Futures Lab · LONG/SHORT · 1H/2H/4H · Bootstrap · Monte Carlo · Solo lectura")
 
 with st.sidebar:
@@ -185,7 +185,7 @@ else:
 
 t1,t2 = st.columns(2)
 t1.metric(f"{symbol} en vivo", f"{live:,.2f} USDT")
-t2.metric("Estado V4.1", gate["state"])
+t2.metric("Estado V4.2", gate["state"])
 st.markdown(f'<div class="status"><b>{gate["state"]}</b><br>{gate["reason"]}</div>', unsafe_allow_html=True)
 
 if setup:
@@ -325,10 +325,10 @@ else:
         )
 
 st.divider()
-st.header("DECISIÓN AUTOMÁTICA V4.1")
+st.header("DECISIÓN AUTOMÁTICA V4.2")
 st.caption(
     "Presupuesto máximo por operación: COP 1.000.000 · Riesgo objetivo: 1,20% = COP 12.000. "
-    "El agente evalúa 1H/2H/4H, compara Spot vs Futures y solo propone una operación cuando la señal "
+    "El agente evalúa 30m/1H/2H/4H, compara Spot vs Futures y solo propone una operación cuando la señal "
     "y la evidencia histórica mínima se cumplen. No ejecuta órdenes."
 )
 
@@ -556,7 +556,7 @@ else:
         st.error(f"Error al cargar la cuenta en modo lectura: {exc}")
 
 st.divider()
-st.header("FUTURES LAB V4.1")
+st.header("FUTURES LAB V4.2")
 st.caption(
     "Laboratorio histórico bajo demanda. Compara Spot LONG contra USDⓈ-M Futures LONG/SHORT "
     "en 1H, 2H y 4H. Incluye comisiones, slippage, funding histórico, división temporal 60/20/20, "
@@ -772,10 +772,10 @@ with st.expander("Resultados históricos por estrategia", expanded=False):
         })
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-with st.expander("Monitor V4.1 / alertas al iPhone", expanded=False):
+with st.expander("Monitor V4.2 / alertas al iPhone", expanded=False):
     st.write("GitHub Actions despierta a los minutos 07, 22, 37 y 52 de cada hora para reducir el riesgo de retrasos del scheduler.")
     st.write("El análisis pesado se ejecuta una sola vez por cada nueva vela 4H cerrada; los intentos posteriores de la misma vela se omiten automáticamente.")
     st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte.")
     st.write("Las operaciones siguen siendo manuales en Binance; V4.0 no contiene funciones para abrir Futures ni retirar fondos.")
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V4.1 es solo análisis; no accede ni opera tu cuenta.")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V4.2 es solo análisis; no accede ni opera tu cuenta.")
