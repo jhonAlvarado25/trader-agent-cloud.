@@ -7,6 +7,9 @@ from pathlib import Path
 
 import requests
 
+from market import get_live_price
+from config import CFG
+
 SIGNALS_PATH = Path("auto_signals.json")
 TELEGRAM_API = "https://api.telegram.org"
 
@@ -22,14 +25,108 @@ def _price(value: float | None) -> str:
     return f"{value:,.4f}" if value < 100 else f"{value:,.2f}"
 
 
+
+def _execution_guidance(signal: dict) -> dict:
+    entry = float(signal.get("entry") or 0)
+    stop = float(signal.get("stop") or 0)
+    tp = float(signal.get("take_profit") or 0)
+    atr = float(signal.get("atr") or 0)
+    direction = str(signal.get("direction") or "").upper()
+
+    if entry <= 0 or stop <= 0 or tp <= 0 or atr <= 0 or direction not in {"LONG","SHORT"}:
+        return {
+            "action": "REVISAR MANUALMENTE",
+            "current": None,
+            "rr": None,
+            "drift_atr": None,
+            "reason": "No hay datos suficientes para validar la entrada en tiempo real.",
+        }
+
+    current = float(get_live_price(signal["symbol"]))
+
+    if direction == "LONG":
+        if current <= stop:
+            return {"action":"NO ENTRAR","current":current,"rr":0.0,"drift_atr":abs(current-entry)/atr,
+                    "reason":"El precio ya alcanzó o atravesó el Stop Loss."}
+        if current >= tp:
+            return {"action":"NO ENTRAR","current":current,"rr":0.0,"drift_atr":abs(current-entry)/atr,
+                    "reason":"El precio ya alcanzó el objetivo; la oportunidad original expiró."}
+        risk = current-stop
+        reward = tp-current
+        moved_with_trade = current > entry
+        moved_against_trade = current < entry
+    else:
+        if current >= stop:
+            return {"action":"NO ENTRAR","current":current,"rr":0.0,"drift_atr":abs(current-entry)/atr,
+                    "reason":"El precio ya alcanzó o atravesó el Stop Loss."}
+        if current <= tp:
+            return {"action":"NO ENTRAR","current":current,"rr":0.0,"drift_atr":abs(current-entry)/atr,
+                    "reason":"El precio ya alcanzó el objetivo; la oportunidad original expiró."}
+        risk = stop-current
+        reward = current-tp
+        moved_with_trade = current < entry
+        moved_against_trade = current > entry
+
+    rr = reward/risk if risk > 0 else 0.0
+    drift_atr = abs(current-entry)/atr
+
+    if drift_atr <= CFG.alert_enter_now_atr and rr >= CFG.alert_min_current_rr:
+        return {
+            "action":"ENTRAR AHORA",
+            "current":current,
+            "rr":rr,
+            "drift_atr":drift_atr,
+            "reason":"El precio sigue suficientemente cerca de la entrada calculada y conserva el R/R mínimo.",
+        }
+
+    if moved_with_trade and drift_atr <= CFG.alert_limit_max_atr:
+        return {
+            "action":"COLOCAR LIMIT",
+            "current":current,
+            "rr":rr,
+            "drift_atr":drift_atr,
+            "reason":"El precio avanzó en la dirección esperada; no perseguirlo. Esperar retroceso a la entrada de referencia.",
+        }
+
+    if moved_against_trade:
+        return {
+            "action":"NO ENTRAR",
+            "current":current,
+            "rr":rr,
+            "drift_atr":drift_atr,
+            "reason":"El precio se movió contra la señal. Esperar una nueva validación del agente.",
+        }
+
+    return {
+        "action":"NO ENTRAR",
+        "current":current,
+        "rr":rr,
+        "drift_atr":drift_atr,
+        "reason":"El precio se alejó demasiado de la entrada calculada o el R/R actual ya no cumple el mínimo.",
+    }
+
 def _message(signal: dict) -> str:
     instrument = signal.get("instrument", "-")
     direction = signal.get("direction", "-")
     timeframe = signal.get("timeframe", "-")
     symbol = signal.get("symbol", "-")
     evidence = signal.get("evidence", "-")
+    try:
+        guidance = _execution_guidance(signal)
+    except Exception as exc:
+        guidance = {
+            "action":"REVISAR MANUALMENTE",
+            "current":None,
+            "rr":None,
+            "drift_atr":None,
+            "reason":f"No fue posible refrescar el precio: {type(exc).__name__}.",
+        }
 
     lines = [
+        f"ACCIÓN: {guidance['action']}",
+        guidance["reason"],
+        "",
+        "TRADER AGENT — OPERACIÓN CANDIDATA",
         "TRADER AGENT — OPERACIÓN CANDIDATA",
         "",
         f"Activo: {symbol}",
@@ -65,7 +162,17 @@ def _message(signal: dict) -> str:
         f"Expectativa TEST: {float(signal.get('expectancy_r', 0)):+.3f}R",
         f"P(expectativa > 0): {float(signal.get('prob_positive', 0))*100:.1f}%",
         "",
-        "Revisar el precio actual antes de ejecutar. La alerta no abre órdenes automáticamente.",
+        "VALIDACIÓN DE PRECIO AL ENVIAR",
+        f"Precio actual: {_price(guidance.get('current'))} USDT",
+        f"Desvío: {'-' if guidance.get('drift_atr') is None else f'{guidance['drift_atr']:.2f} ATR'}",
+        f"R/R actual: {'-' if guidance.get('rr') is None else f'1:{guidance['rr']:.2f}'}",
+        "",
+        (
+            f"Si indica COLOCAR LIMIT, usa la entrada de referencia {_price(signal.get('entry'))} USDT "
+            "y no una orden Market."
+            if guidance.get("action") == "COLOCAR LIMIT"
+            else "La alerta no abre órdenes automáticamente."
+        ),
     ])
     return "\n".join(lines)
 
