@@ -174,7 +174,7 @@ def automatic_recommendation(symbol:str,cfg:StrategyConfig,operation_budget_cop=
         "state":"OPERACIÓN CANDIDATA",
         "reason":f"{c['setup']} {c['direction']} {c['timeframe']} · evidencia {w['evidence']} · {w['instrument']}.",
         "symbol":symbol,"instrument":w["instrument"],"direction":c["direction"],"timeframe":c["timeframe"],
-        "setup":c["setup"],"evidence":w["evidence"],"signal_time":str(c["signal_time"]),"entry_drift_atr":drift,
+        "setup":c["setup"],"evidence":w["evidence"],"signal_time":str(c["signal_time"]),"entry_drift_atr":drift,"atr":float(c["atr"]),
         "entry":lv["entry"],"stop":lv["stop"],"limit_sl":lsl,"take_profit":lv["tp"],"rr":lv["rr"],
         "leverage":lev,"margin_mode":"ISOLATED" if w["instrument"]=="FUTURES" else None,
         "operation_budget_cop":budget,"risk_budget_cop":budget*risk,
