@@ -21,7 +21,7 @@ from binance_readonly import (
 )
 from futures_lab import run_lab, leverage_table
 from futures_market import get_futures_data_source
-from auto_decision_v42 import automatic_recommendation
+from auto_decision_v42 import automatic_recommendation, detect_current_candidates
 
 st.set_page_config(
     page_title="Trader Agent Cloud V4.2",
@@ -152,6 +152,21 @@ def cached_auto_recommendation(sym: str, operation_budget: float, risk_fraction:
         risk_pct=risk_fraction,
         cop_per_usdt=cop_usdt,
     )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cached_auto_prescan(sym: str):
+    candidates = detect_current_candidates(sym, CFG)
+    return [
+        {
+            "timeframe": x["timeframe"],
+            "direction": x["direction"],
+            "setup": x["setup"],
+            "score": int(x.get("score", 0)),
+            "signal_time": str(x.get("signal_time", "")),
+        }
+        for x in candidates
+    ]
 
 try:
     live = get_live_price(symbol)
@@ -333,13 +348,62 @@ st.caption(
 )
 
 try:
-    auto = cached_auto_recommendation(symbol, float(capital), float(risk_pct), float(cop_per_usdt))
+    prescan = cached_auto_prescan(symbol)
+    prescan_error = None
 except Exception as auto_exc:
+    prescan = []
+    prescan_error = str(auto_exc)
+
+session_key = f"deep_auto_result_{symbol}"
+
+if prescan_error:
     auto = {
-        "state":"ERROR",
-        "reason":f"No se pudo completar la recomendación automática: {auto_exc}",
+        "state":"DATOS TEMPORALMENTE NO DISPONIBLES",
+        "reason":"El panel no pudo actualizar el pre-scan en este intento. El monitor cloud y Telegram siguen operando de forma independiente.",
         "symbol":symbol,
     }
+elif prescan:
+    summary = " · ".join(
+        f"{x['direction']} {x['timeframe']} {x['setup'].replace('_',' ')}"
+        for x in prescan
+    )
+    auto = st.session_state.get(session_key) or {
+        "state":"PRE-SCAN",
+        "reason":f"Señal técnica detectada: {summary}. Falta la validación estadística profunda.",
+        "symbol":symbol,
+        "operation_budget_cop":float(capital),
+        "risk_budget_cop":float(capital*risk_pct),
+    }
+else:
+    st.session_state.pop(session_key, None)
+    auto = {
+        "state":"NO OPERAR",
+        "reason":"No hay señal técnica completa en 30m/1H/2H/4H para este activo.",
+        "symbol":symbol,
+        "operation_budget_cop":float(capital),
+        "risk_budget_cop":float(capital*risk_pct),
+    }
+
+if prescan:
+    if st.button("Validar estadísticamente ahora", use_container_width=True, key=f"validate_{symbol}"):
+        with st.spinner("Validando la oportunidad con historia y costos..."):
+            try:
+                deep = cached_auto_recommendation(
+                    symbol, float(capital), float(risk_pct), float(cop_per_usdt)
+                )
+                st.session_state[session_key] = deep
+                auto = deep
+            except Exception as deep_exc:
+                auto = {
+                    "state":"VALIDACIÓN PENDIENTE",
+                    "reason":(
+                        "El cálculo profundo no terminó en el panel. "
+                        "El monitor cloud continuará validando automáticamente y Telegram avisará si la oportunidad queda aprobada."
+                    ),
+                    "symbol":symbol,
+                    "operation_budget_cop":float(capital),
+                    "risk_budget_cop":float(capital*risk_pct),
+                }
 
 ad1,ad2,ad3 = st.columns(3)
 ad1.metric("Estado automático", auto.get("state","-"))
@@ -426,6 +490,13 @@ Reduce Only en SL/TP: Sí""",
         )
 elif auto.get("state") == "ESPERAR":
     st.warning(auto.get("reason","La señal existe, pero la entrada ya se alejó demasiado."))
+elif auto.get("state") == "PRE-SCAN":
+    st.info(
+        "Hay una señal técnica preliminar. El monitor cloud realiza la validación estadística completa; "
+        "si la aprueba, recibirás por Telegram ENTRAR AHORA, COLOCAR LIMIT o NO ENTRAR."
+    )
+elif auto.get("state") in {"VALIDACIÓN PENDIENTE","DATOS TEMPORALMENTE NO DISPONIBLES"}:
+    st.warning(auto.get("reason","La validación del panel está pendiente."))
 elif auto.get("state") == "NO OPERAR":
     st.info("El agente seguirá esperando una configuración que supere tanto el filtro técnico como el estadístico.")
 
