@@ -122,11 +122,13 @@ def _message(signal: dict) -> str:
             "reason":f"No fue posible refrescar el precio: {type(exc).__name__}.",
         }
 
+    drift_text = "-" if guidance.get("drift_atr") is None else f"{float(guidance['drift_atr']):.2f} ATR"
+    rr_text = "-" if guidance.get("rr") is None else f"1:{float(guidance['rr']):.2f}"
+
     lines = [
         f"ACCIÓN: {guidance['action']}",
         guidance["reason"],
         "",
-        "TRADER AGENT — OPERACIÓN CANDIDATA",
         "TRADER AGENT — OPERACIÓN CANDIDATA",
         "",
         f"Activo: {symbol}",
@@ -164,8 +166,8 @@ def _message(signal: dict) -> str:
         "",
         "VALIDACIÓN DE PRECIO AL ENVIAR",
         f"Precio actual: {_price(guidance.get('current'))} USDT",
-        f"Desvío: {'-' if guidance.get('drift_atr') is None else f'{guidance['drift_atr']:.2f} ATR'}",
-        f"R/R actual: {'-' if guidance.get('rr') is None else f'1:{guidance['rr']:.2f}'}",
+        f"Desvío: {drift_text}",
+        f"R/R actual: {rr_text}",
         "",
         (
             f"Si indica COLOCAR LIMIT, usa la entrada de referencia {_price(signal.get('entry'))} USDT "
