@@ -1,4 +1,4 @@
-name: Trader Agent V4.1 Unified Monitor
+name: Trader Agent V4.2 Unified Monitor
 
 on:
   workflow_dispatch:
@@ -59,7 +59,7 @@ jobs:
           signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write("# Trader Agent V4.1 — Recomendaciones automáticas\n\n")
+              f.write("# Trader Agent V4.2 — Recomendaciones automáticas\n\n")
               f.write("Presupuesto por operación: **COP 1.000.000**  \n")
               f.write("Riesgo máximo objetivo: **1,20% = COP 12.000**\n\n")
 
@@ -111,7 +111,7 @@ jobs:
                   else ""
               )
               print(
-                  f"::error title=Trader V4.1 - {s['symbol']}::"
+                  f"::error title=Trader V4.2 - {s['symbol']}::"
                   f"{s['instrument']} {s['direction']} {s['timeframe']}{extra} | "
                   f"entrada {s['entry']:.2f} | TP {s['take_profit']:.2f} | "
                   f"SL {s['stop']:.2f} | riesgo COP {s['net_loss_cop']:.0f}"
