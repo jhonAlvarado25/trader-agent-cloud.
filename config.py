@@ -81,6 +81,11 @@ class StrategyConfig:
     auto_balanced_min_expectancy_r: float = 0.05
     auto_balanced_min_profit_factor: float = 1.08
     auto_balanced_min_prob_positive: float = 0.75
-    auto_balanced_max_candidates_per_symbol: int = 3
+    auto_balanced_max_candidates_per_symbol: int = 2
+
+    # Ejecución de alertas: evita perseguir el precio.
+    alert_enter_now_atr: float = 0.15
+    alert_limit_max_atr: float = 0.50
+    alert_min_current_rr: float = 1.80
 
 CFG = StrategyConfig()
