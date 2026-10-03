@@ -4,13 +4,23 @@ import requests
 import pandas as pd
 
 REPO_API = "https://api.github.com/repos/jhonAlvarado25/trader-agent-cloud."
-WORKFLOW = "market-monitor.yml"
+WORKFLOW = "auto-recommend-v4.yml"
 BOGOTA_TZ = "America/Bogota"
 
 
 def next_4h_close(now_utc: pd.Timestamp | None = None) -> pd.Timestamp:
     now = now_utc or pd.Timestamp.now(tz="UTC")
     return now.floor("4h") + pd.Timedelta(hours=4)
+
+
+def next_monitor_run(now_utc: pd.Timestamp | None = None) -> pd.Timestamp:
+    now = now_utc or pd.Timestamp.now(tz="UTC")
+    base = now.floor("h")
+    for minute in (7, 22, 37, 52):
+        candidate = base + pd.Timedelta(minutes=minute)
+        if candidate > now:
+            return candidate
+    return base + pd.Timedelta(hours=1, minutes=7)
 
 
 def format_local(ts) -> str:
@@ -25,7 +35,7 @@ def get_last_scheduled_run(timeout: int = 8) -> dict | None:
     params = {"event": "schedule", "per_page": 1}
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "TraderAgentCloudV3.1",
+        "User-Agent": "TraderAgentCloudV4.2",
     }
     try:
         r = requests.get(url, params=params, headers=headers, timeout=timeout)
