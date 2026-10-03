@@ -102,7 +102,7 @@ def main() -> int:
         send_message(
             token,
             chat_id,
-            "Trader Agent V4.1 conectado correctamente con Telegram. "
+            "Trader Agent V4.2 conectado correctamente con Telegram. "
             "Las próximas alertas llegarán cuando aparezca una operación candidata.",
         )
         print("[TELEGRAM] Mensaje de prueba enviado.")
