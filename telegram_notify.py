@@ -149,10 +149,24 @@ def _message(signal: dict) -> str:
     ]
 
     if instrument == "FUTURES":
+        base_asset = symbol[:-4] if symbol.endswith("USDT") else symbol
+        side_button = "Vender/Short" if direction == "SHORT" else "Comprar/Long"
         lines.extend([
             "",
+            "CÓMO CARGARLO EN BINANCE FUTURES",
             f"Margen: {signal.get('margin_mode') or 'ISOLATED'}",
             f"Leverage: {int(signal.get('leverage', 1))}x",
+            f"Botón: {side_button}",
+            "Tipo de orden: LIMIT",
+            (
+                f"Precio LIMIT: {_price(signal.get('entry'))} USDT"
+                if guidance.get("action") == "COLOCAR LIMIT"
+                else f"Precio actual ref.: {_price(guidance.get('current'))} USDT"
+            ),
+            f"Monto: {float(signal.get('qty', 0)):.6f} {base_asset}",
+            f"TP: {_price(signal.get('take_profit'))} USDT",
+            f"SL: {_price(signal.get('stop'))} USDT",
+            "Al abrir: Reduce only = NO",
             f"Margen aprox.: COP {_money(signal.get('margin_cop', 0))}",
         ])
     elif signal.get("limit_sl") is not None:
