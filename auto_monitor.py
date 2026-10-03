@@ -95,6 +95,8 @@ def make_signal(symbol: str) -> dict | None:
         "ci_high": float(stats.get("ci_high", 0.0)),
         "prob_positive": float(stats.get("prob_positive", 0.0)),
         "profit_factor": stats.get("pf_test"),
+        "atr": float(rec.get("atr", 0.0)),
+        "entry_drift_atr": float(rec.get("entry_drift_atr", 0.0)),
     }
 
     payload["key"] = "|".join([
