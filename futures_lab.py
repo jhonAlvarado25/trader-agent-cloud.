@@ -10,7 +10,7 @@ from futures_market import get_futures_klines, get_funding_history
 from market import get_klines
 
 
-TIMEFRAME_HOURS = {"1h": 1, "2h": 2, "4h": 4}
+TIMEFRAME_HOURS = {"30m": 0.5, "1h": 1, "2h": 2, "4h": 4}
 
 
 @dataclass(frozen=True)
