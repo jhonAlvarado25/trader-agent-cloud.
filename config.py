@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class StrategyConfig:
-    symbols: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT")
+    symbols: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "LINKUSDT", "AVAXUSDT", "LTCUSDT")
     primary_symbol: str = "BTCUSDT"
 
     timeframe_entry: str = "4h"
@@ -67,7 +67,7 @@ class StrategyConfig:
     default_cop_per_usdt: float = 3350.0
 
     # V4.1 — recomendación automática
-    auto_timeframes: tuple[str, ...] = ("1h", "2h", "4h")
+    auto_timeframes: tuple[str, ...] = ("30m", "1h", "2h", "4h")
     auto_history_years: int = 5
     auto_stop_atr: float = 1.25
     auto_reward_risk: float = 2.0
@@ -75,5 +75,12 @@ class StrategyConfig:
     auto_max_entry_drift_atr: float = 0.50
     auto_futures_leverage_promising: int = 2
     auto_futures_leverage_strong: int = 3
+
+    # V4.2 — modo balanceado para aumentar frecuencia sin forzar trades
+    auto_balanced_min_test_trades: int = 50
+    auto_balanced_min_expectancy_r: float = 0.05
+    auto_balanced_min_profit_factor: float = 1.08
+    auto_balanced_min_prob_positive: float = 0.75
+    auto_balanced_max_candidates_per_symbol: int = 3
 
 CFG = StrategyConfig()
