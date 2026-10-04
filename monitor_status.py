@@ -35,7 +35,7 @@ def get_last_scheduled_run(timeout: int = 8) -> dict | None:
     params = {"event": "schedule", "per_page": 1}
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "TraderAgentCloudV4.2",
+        "User-Agent": "TraderAgentCloudV5",
     }
     try:
         r = requests.get(url, params=params, headers=headers, timeout=timeout)

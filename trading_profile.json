@@ -1,0 +1,21 @@
+{
+  "capital_cop": 1000000,
+  "available_cop": 1000000,
+  "cop_per_usdt": 3350,
+  "fx_confirmed": false,
+  "risk_pct": 0.005,
+  "max_open_risk_pct": 0.01,
+  "committed_risk_cop": 0,
+  "max_position_fraction": 1.0,
+  "mode": "PAPER",
+  "target_ea_min": 0.15,
+  "target_ea_max": 0.20,
+  "cdt_ea": null,
+  "max_daily_loss_pct": 0.015,
+  "max_weekly_loss_pct": 0.03,
+  "max_drawdown_pct": 0.05,
+  "spot_fee_each_side": 0.001,
+  "futures_fee_each_side": 0.0005,
+  "slippage_each_side": 0.0003,
+  "futures_leverage": 2
+}

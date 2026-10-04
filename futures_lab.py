@@ -18,6 +18,7 @@ class LabCosts:
     spot_fee_each_side: float = 0.0010
     futures_fee_each_side: float = 0.0005
     slippage_each_side: float = 0.0002
+    spot_stop_limit_buffer_pct: float = 0.0012
 
 
 def _ema(s: pd.Series, n: int) -> pd.Series:
@@ -81,11 +82,13 @@ def enrich_lab(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _funding_cumulative(funding: pd.DataFrame):
+def _funding_cumulative(funding: pd.DataFrame, weighted: bool = False):
     if funding is None or funding.empty:
         return np.array([], dtype="datetime64[ns]"), np.array([0.0])
     times = funding["funding_time"].dt.tz_convert("UTC").dt.tz_localize(None).to_numpy(dtype="datetime64[ns]")
     rates = funding["funding_rate"].to_numpy(float)
+    if weighted:
+        rates = rates * funding["mark_price"].to_numpy(float)
     cum = np.r_[0.0, np.cumsum(rates)]
     return times, cum
 
@@ -115,7 +118,8 @@ def simulate_config(
     signal_col = "long_signal" if direction == "LONG" else "short_signal"
     max_hold = max(4, int(round(72 / TIMEFRAME_HOURS[timeframe])))
 
-    fund_times, fund_cum = _funding_cumulative(funding)
+    weighted_funding = funding is not None and "mark_price" in funding.columns
+    fund_times, fund_cum = _funding_cumulative(funding, weighted=weighted_funding)
     rows = []
     i = 220
 
@@ -156,7 +160,7 @@ def simulate_config(
         gross_r = None
         outcome = None
 
-        end_idx = min(entry_idx + max_hold, len(df) - 1)
+        end_idx = min(entry_idx + max_hold - 1, len(df) - 1)
         for j in range(entry_idx, end_idx + 1):
             high = float(df.iloc[j]["high"])
             low = float(df.iloc[j]["low"])
@@ -168,11 +172,12 @@ def simulate_config(
                 hit_stop = high >= stop
                 hit_tp = low <= tp
 
-            if hit_stop and hit_tp:
-                exit_idx, exit_price, gross_r, outcome = j, stop, -1.0, "LOSS"
-                break
             if hit_stop:
-                exit_idx, exit_price, gross_r, outcome = j, stop, -1.0, "LOSS"
+                stop_fill = stop * (1-costs.spot_stop_limit_buffer_pct) if instrument == "SPOT" else stop
+                candle_open = float(df.iloc[j]["open"])
+                exit_price = min(stop_fill, candle_open) if direction == "LONG" else max(stop_fill, candle_open)
+                gross_r = (exit_price-entry)/risk_abs if direction == "LONG" else (entry-exit_price)/risk_abs
+                exit_idx, outcome = j, "LOSS"
                 break
             if hit_tp:
                 exit_idx, exit_price, gross_r, outcome = j, tp, float(rr), "WIN"
@@ -189,15 +194,17 @@ def simulate_config(
 
         risk_pct = risk_abs / entry
         if instrument == "SPOT":
-            round_trip_pct = 2*(costs.spot_fee_each_side + costs.slippage_each_side)
+            round_trip_pct = (1 + abs(exit_price / entry)) * (costs.spot_fee_each_side + costs.slippage_each_side)
             funding_pct = 0.0
         else:
-            round_trip_pct = 2*(costs.futures_fee_each_side + costs.slippage_each_side)
+            round_trip_pct = (1 + abs(exit_price / entry)) * (costs.futures_fee_each_side + costs.slippage_each_side)
             raw_funding = _funding_sum(
                 fund_times, fund_cum,
                 df.iloc[entry_idx]["open_time"],
                 df.iloc[exit_idx]["close_time"],
             )
+            if weighted_funding:
+                raw_funding /= entry
             funding_pct = raw_funding if direction == "LONG" else -raw_funding
 
         fee_r = round_trip_pct / risk_pct

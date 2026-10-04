@@ -1,4 +1,20 @@
-# Trader Agent Cloud V4.1
+# Trader Agent Cloud V5
+
+Capital inicial **COP 1.000.000**, editable desde el panel. Riesgo inicial **0,5%**.
+Meta comparativa **15–20% EA**, no promesa ni cuota de operaciones. Modo inicial **PAPER**.
+
+- Calculador de cantidad, nocional, margen, SL/TP y riesgo con capital manual.
+- Datos nativos separados Spot/Futures y bloqueo cuando no hay datos fiables.
+- Selección por VALIDATION y comprobación TEST independiente de la selección.
+- Validación por bloques, costos estresados y seguimiento sombra PAPER.
+- Telegram con confirmación de entrega; valores siempre sujetos a revalidación.
+- Cuenta Binance solo lectura; nunca abre órdenes ni mueve fondos.
+
+Consulta **[V5_GUIA.md](V5_GUIA.md)** para usar el iPhone, actualizar también el capital
+del monitor Telegram y conocer los límites de la validación, estado y ejecución.
+Cambiar capital en el panel no sincroniza automáticamente GitHub Actions.
+
+## Historial anterior (V3/V4; no define la operación actual V5)
 
 V3 cuantitativa para análisis Spot con monitor programado y alertas para revisión. No ejecuta órdenes ni accede a una cuenta Binance.
 
