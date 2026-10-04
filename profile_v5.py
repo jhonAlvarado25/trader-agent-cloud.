@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 
+FIXED_RISK_PCT = 0.015
 
 @dataclass(frozen=True)
 class TradingProfile:
@@ -14,8 +15,8 @@ class TradingProfile:
     available_cop: float = 1_000_000.0
     cop_per_usdt: float = 3350.0  # Assumption only: confirm your actual purchase rate.
     fx_confirmed: bool = False
-    risk_pct: float = 0.005
-    max_open_risk_pct: float = 0.01
+    risk_pct: float = FIXED_RISK_PCT
+    max_open_risk_pct: float = FIXED_RISK_PCT
     committed_risk_cop: float = 0.0
     max_position_fraction: float = 1.0
     mode: str = "PAPER"
@@ -40,8 +41,8 @@ class TradingProfile:
             raise ValueError("Capital y tasa COP/USDT deben ser positivos")
         if not 0 <= self.available_cop <= self.capital_cop:
             raise ValueError("El capital disponible debe estar entre cero y el capital total")
-        if not 0.0005 <= self.risk_pct <= 0.01:
-            raise ValueError("Riesgo V5: entre 0,05% y 1% del capital total")
+        if not 0.0005 <= self.risk_pct <= FIXED_RISK_PCT:
+            raise ValueError("Riesgo interno permitido: hasta 1,5% del capital")
         if not self.risk_pct <= self.max_open_risk_pct <= 0.02:
             raise ValueError("Límite conjunto de riesgo inválido")
         if self.committed_risk_cop < 0 or not 0 < self.max_position_fraction <= 1:
@@ -79,7 +80,7 @@ def load_profile(path: str | Path = "trading_profile.json", environ: dict | None
     env = os.environ if environ is None else environ
     mapping = {
         "TRADER_CAPITAL_COP": "capital_cop", "TRADER_AVAILABLE_COP": "available_cop",
-        "TRADER_RISK_PCT": "risk_pct", "TRADER_COP_PER_USDT": "cop_per_usdt",
+        "TRADER_COP_PER_USDT": "cop_per_usdt",
         "TRADER_COMMITTED_RISK_COP": "committed_risk_cop",
     }
     for name, field in mapping.items():
@@ -93,6 +94,8 @@ def load_profile(path: str | Path = "trading_profile.json", environ: dict | None
         if env["TRADER_FX_CONFIRMED"].lower() not in {"true", "false"}:
             raise ValueError("TRADER_FX_CONFIRMED debe ser true/false")
         data["fx_confirmed"] = env["TRADER_FX_CONFIRMED"].lower() == "true"
+    # User policy V5.1: neither old JSON files nor environment variables change it.
+    data.update(risk_pct=FIXED_RISK_PCT, max_open_risk_pct=FIXED_RISK_PCT)
     return TradingProfile(**data)
 
 

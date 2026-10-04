@@ -1,4 +1,4 @@
-name: Trader Agent V5 CI
+name: Trader Agent V5.1 CI
 
 on:
   push:
@@ -39,6 +39,9 @@ jobs:
           import engine
           import auto_decision_v5
           import monitor_v5
+          import monitor_v51
+          import dashboard_v51
+          import publish_market_v51
           print("Trader Agent V5 imports OK")
           PY
 

@@ -16,11 +16,11 @@ def next_4h_close(now_utc: pd.Timestamp | None = None) -> pd.Timestamp:
 def next_monitor_run(now_utc: pd.Timestamp | None = None) -> pd.Timestamp:
     now = now_utc or pd.Timestamp.now(tz="UTC")
     base = now.floor("h")
-    for minute in (7, 22, 37, 52):
+    for minute in range(2, 60, 5):
         candidate = base + pd.Timedelta(minutes=minute)
         if candidate > now:
             return candidate
-    return base + pd.Timedelta(hours=1, minutes=7)
+    return base + pd.Timedelta(hours=1, minutes=2)
 
 
 def format_local(ts) -> str:

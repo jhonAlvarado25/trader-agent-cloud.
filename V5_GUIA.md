@@ -1,164 +1,116 @@
-# Trader Agent Cloud V5
+# Trader Agent V5.1 · Guía simple
 
-## Objetivo y configuración inicial
+## Lo único que debe hacer
 
-Buscar rentabilidad **neta de costos**, sin prometer ganancias ni forzar operaciones.
-Capital inicial editable: **COP 1.000.000**. Riesgo inicial: **0,5% = COP 5.000**.
-Meta de comparación: **15–20% efectivo anual** (COP 150.000–200.000 en un año sobre ese capital).
-Equivalente mensual compuesto: aproximadamente 1,17–1,53%, no una cuota mensual garantizada.
+1. Abra la aplicación habitual.
+2. Escriba **Capital para invertir (COP)**: dinero libre destinado al agente.
+3. Lea la decisión: **esperar**, **observar** o **candidata para revisar**.
+4. Solo cuando exista una candidata validada verá los campos de Binance y sus cantidades.
+5. Si decide ejecutar, revise el saldo USDT real, abra manualmente la entrada y confirme su
+   protección. No abra otra operación reutilizando el mismo capital.
 
-Modo inicial: **PAPER**. Cambiar a PILOTO_MANUAL no abre ninguna orden; exige evidencia
-FUERTE, tasa COP/USDT confirmada y revisión manual. El objetivo EA jamás aumenta el
-riesgo, el leverage ni el número de señales. El trading cripto no equivale a un CDT
-en riesgo, protección del capital, liquidez o tratamiento tributario.
+No elige moneda, estrategia, mercado, temporalidad, riesgo ni niveles.
+**No descarga ni modifica JSON.** No necesita pulsar Analizar.
+Cambiar capital recalcula los montos; se conserva durante la sesión del navegador.
+Si se reinicia la sesión, vuelva a introducirlo. No se almacena como dato público.
 
-No se declara una tasa bancaria actual. El campo CDT es una cotización EA manual,
-para el mismo plazo y antes de impuestos. Comparar realmente requiere también
-costos de compra/venta de USDT, variación COP/USDT, impuestos y aportes/retiros.
+## Riesgo fijo
 
-## Uso desde el iPhone
+**1,5% por operación**, solicitado por el usuario. Sobre COP 1.000.000 son COP 15.000
+de presupuesto de pérdida modelada. Redondeos, saldo, costos o mínimos pueden reducir
+el tamaño; no se aumenta para completar el mínimo de Binance.
 
-1. Abre tu aplicación Streamlit habitual y verifica el título **Trader Agent Cloud V5**.
-2. Arriba, cambia **Capital total de trading (COP)**. No es el nocional ni el margen.
-3. Actualiza capital libre, riesgo ya comprometido y tasa realmente pagada por USDT.
-   La tasa inicial 3350 es una suposición heredada, NO una cotización en vivo.
-4. Usa **Señales V5 → Analizar oportunidad V5** para analizar un activo.
-5. Si existe una candidata, pulsa **Revalidar y cargar niveles en el calculador**.
-6. En **Valores Binance**, se mostrarán entrada LIMIT, cantidad, nocional, SL, TP,
-   costos, pérdida/ganancia modeladas, R/R neto y, en Futures, margen ISOLATED y leverage.
-7. Si cambias el capital, el tamaño se recalcula con los mismos niveles y cotización
-   vigente. Una cotización de más de 60 segundos exige volver a validar; nunca se
-   mantiene como ejecutable una cantidad antigua por comodidad.
-8. Introduce las órdenes tú mismo en Binance SOLO después de revisar modo, saldo,
-   posiciones, restricciones, protección y liquidación. La cantidad es del activo,
-   no COP ni margen. Para Futures en modo unidireccional, apertura Reduce Only = NO;
-   cierres = SÍ. En Hedge Mode se requiere Position Side y los flags de cierre no
-   son iguales: revisa la configuración en Binance antes de copiar valores.
-9. Registra cierres netos en **Bitácora** y descarga su JSON para conservarlos.
+No es una pérdida máxima garantizada: gaps, comisiones, funding y órdenes no ejecutadas
+pueden superarla. No se elevó el límite de drawdown histórico para fabricar más señales:
+con 1,5% algunas estrategias pueden dejar de superar ese filtro.
 
-Un SHORT Spot queda bloqueado. Se aplican PRICE_FILTER, LOT_SIZE y mínimo nocional
-del mercado, no decimales fijos. Si el mínimo Binance excede el tamaño permitido,
-se espera: no se aumenta el riesgo para completar la orden. El mínimo puede impedir
-ciertas operaciones, especialmente con capital pequeño y riesgo reducido.
+El calculador no conoce automáticamente otras posiciones u órdenes reales. La indicación
+**una operación a la vez** debe cumplirse manualmente. No confundir riesgo 1,5% con un Stop
+a 1,5% del precio: el Stop depende de la estrategia, la cantidad se adapta al riesgo.
 
-Las verificaciones implementadas no equivalen a un chequeo completo de todas las
-restricciones del broker (por ejemplo filtros porcentuales/precio de referencia,
-límites por cuenta o reglas actualizadas al introducir la orden). Binance debe
-aceptar y confirmar las órdenes; el calculador no envía ni valida una orden privada.
+## Qué recibe automáticamente
 
-## Capital del panel versus Telegram
+- Revisión programada en la nube cada cinco minutos, incluso con la app cerrada.
+- Pantalla actualizada cada treinta segundos mientras la sesión permanezca activa.
+- Precios Spot, variación 24 h y tendencia diaria de BTC, ETH, SOL, BNB, XRP, ADA, DOGE,
+  LINK, AVAX y LTC. Los extremos de veinte velas horarias se explican en los detalles.
+- Selección Spot/Futures y LONG/SHORT donde existan datos nativos completos.
+- Tabla de entrada, cantidad, objetivo y protección; margen y apalancamiento en Futures.
+- Telegram avisa por oportunidad, no a una hora fija. El mensaje no arrastra cantidades
+  calculadas con un capital antiguo: las cifras se calculan al abrir la aplicación.
 
-Los campos del panel se guardan en la sesión de ese navegador. **No modifican por sí
-solos el proceso independiente de GitHub Actions.** Para que Telegram use lo mismo:
+GitHub Actions es una programación de revisiones, **no un servicio de ticks 24/7 ni un
+reloj garantizado**. Puede retrasarse u omitir ciclos. Se muestra la fecha real del informe.
+Un informe mayor de doce minutos, una señal vencida, datos incompletos o precios no
+revalidados no generan campos de ejecución. La evidencia EN OBSERVACIÓN no muestra órdenes.
 
-1. En el panel abre **Guardar capital y usar el mismo perfil en Telegram**.
-2. Descarga `trading_profile.json`.
-3. Reemplaza ese archivo en la raíz del repositorio de GitHub y confirma el cambio.
-4. El monitor lo leerá en su próximo ciclo. El despliegue Streamlit que sigue main
-   también recogerá ese archivo; reabre el panel para cargar el perfil actualizado.
+## Conversión COP/USDT sin otro dato obligatorio
 
-Alternativamente, usa Repository variables en GitHub Actions:
+Se consulta la TRM vigente de Datos Abiertos Colombia / Superfinanciera y se añade una
+reserva de conversión del 3%. Es una **estimación de dimensionamiento**, no una cotización
+P2P, no la TRM exacta de USDT y no su costo real de compra. Ni el 3% ni la paridad USDT/USD
+se garantizan. Verifique capital USDT suficiente antes de copiar una cantidad.
 
-| Variable | Unidad / ejemplo |
-|---|---|
-| TRADER_CAPITAL_COP | 1000000 |
-| TRADER_AVAILABLE_COP | Capital libre COP; si solo cambia el capital, se iguala al nuevo capital |
-| TRADER_RISK_PCT | 0.005 significa 0,5%, NO 0.5 |
-| TRADER_COP_PER_USDT | Tasa manual realmente usada |
-| TRADER_COMMITTED_RISK_COP | Pérdida modelada ya comprometida |
-| TRADER_FX_CONFIRMED | true o false |
-| TRADER_MODE | PAPER o PILOTO_MANUAL |
+Si no hay TRM vigente se bloquean los montos. Se elimina la dependencia de que el usuario
+confirme manualmente la tasa 3350 heredada. Los resultados en COP siguen siendo estimados;
+la rentabilidad real requiere precios de compra/venta USDT, comisiones y tributos reales.
 
-Las variables CLOUD prevalecen sobre el JSON. Por eso revisa el capital que aparece
-en cada mensaje Telegram. Si hay diferencias, recalcula en el panel con tu capital
-actual y no copies una cantidad de otra configuración. El JSON del repo es público
-si tu repo es público; no incluyas bitácoras privadas, secretos ni saldos de cuenta.
+## Cómo introducir los valores
 
-## Validación V5
+**Spot:** Limit de compra; después de confirmar la entrada, OCO / TP-SL de venta con
+Take Profit, Stop/trigger, Limit SL y cantidad de protección. Una Stop-Limit puede no
+ejecutarse. Confirme el saldo del activo después de comisiones.
 
-- Mercados nativos separados. FUTURES no utiliza un proxy Spot ni funding cero
-  cuando no hay datos. HTTP 451 o datos incompletos bloquean ese mercado; no se
-  intenta eludir restricciones geográficas ni habilitar permisos de trading.
-- Señales en velas cerradas 1H/2H/4H, con contexto 1D cerrado antes de la señal.
-- Pullback estricto, balanceado y breakout; stop 1,25 ATR/estructura y objetivo base
-  2R bruto. No se han incorporado automáticamente 3R, trailing o señales sociales.
-- El histórico de tres años se divide cronológicamente 60/20/20; operaciones que
-  cruzan límites se purgan. Solo TRAIN/VALIDATION escogen la regla. Se comprueba TEST
-  de una sola ganadora por activo; si falla, no se prueba la siguiente por su TEST.
-- FUERTE exige 75 trades TEST, expectativa >0,05R, PF >=1,20, IC95% por bloques
-  positivo, soporte bootstrap >=95%, expectativa positiva con costos estresados,
-  3/4 ventanas OOS positivas y drawdown MC P95 compatible con el límite configurado.
-- Walk-forward de reglas fijas con entrenamiento expansivo y ventanas OOS sucesivas.
-  No reentrena un modelo ni optimiza parámetros en cada fold. El bootstrap preserva
-  pequeños bloques, pero no elimina todos los sesgos, dependencia ni cambios de régimen.
-- **EN OBSERVACIÓN** solo es apto para PAPER. FUERTE es una clasificación histórica,
-  no probabilidad de ganar ni demostración de rentabilidad futura.
-- La selección repetida y múltiples activos pueden seguir produciendo sobreajuste.
-  Hace falta evaluación forward estable: una muestra inicial de 50–100 oportunidades
-  ayuda a diagnosticar, pero no garantiza ni prueba por sí sola una ventaja.
+**Futures:** USDⓈ-M, margen aislado y apalancamiento indicado (máximo 2x), entrada Limit,
+cierres Stop Market y Take Profit Market con trigger de precio del contrato.
+En modo unidireccional, apertura Reduce Only = NO y cierres = SÍ. Hedge Mode requiere
+Position Side y otros flags: no copie instrucciones de modo unidireccional sin adaptarlas.
+La liquidación real y las reglas finales se verifican en Binance. No se modifica ningún
+modo de cuenta, leverage, permiso ni orden desde el agente.
 
-## Costos y ejecución
+El modelo de ganancia al TP es una aproximación conservadora de costos, no un cobro
+asegurado; un TP Market puede ejecutarse distinto del trigger.
 
-Las comisiones y slippage del perfil son **supuestos editables**, no las tarifas
-privadas confirmadas de tu cuenta. La cuenta de lectura puede mostrar eventos reales,
-pero no se presume que esos supuestos coincidan. Ajusta las comisiones a tu categoría.
-Se modelan costos sobre nocional de entrada/salida, spread actual y funding histórico
-Futures con mark price. El tamaño reserva un escenario de funding según tasa e
-intervalo actuales durante 72 horas; NO acota tasas futuras ni convierte funding en
-un valor garantizado. Los costos pueden cambiar y el Stop puede ejecutarse peor.
+## Qué se conserva de la validación V5
 
-La simulación entra en el open siguiente a la señal y aplica stop primero cuando SL
-y TP se tocan en la misma vela. Incluye gaps adversos y un buffer Stop-Limit Spot.
-Todavía modela ejecución con velas y supuestos, no colas reales del libro ni fills
-parciales. La Stop-Limit puede no ejecutarse; no debe interpretarse COP 5.000 como
-una pérdida máxima garantizada. En Futures el backtest utiliza precio del contrato;
-el trigger elegido en Binance debe ser consistente y la liquidación real se verifica
-en Binance, no con la aproximación 1/leverage.
+- Datos nativos Spot/Futures separados; no se reemplaza Futures por un proxy Spot.
+- Restricciones HTTP 401/403/418/429/451 detienen la ruta afectada, sin eludirlas.
+- Velas cerradas 1H/2H/4H con contexto 1D; selección TRAIN/VALIDATION y TEST posterior.
+- Clasificación FUERTE exige muestra, expectativa, PF, bootstrap por bloques, costos
+  estresados, ventanas OOS y drawdown compatibles; no es una probabilidad de ganar.
+- Ranking entre candidatas basado en validación, no en buscar el mayor TEST.
+- Stop primero ante ambigüedad, gaps y funding nativo en la simulación.
+- Los filtros de tamaño no equivalen a todos los controles privados del broker.
+- La meta 15–20% EA es una referencia, no una promesa ni una obligación de operar.
 
-## Monitor, controles y bitácoras
+## Detalles técnicos y límites
 
-Se conserva el workflow `auto-recommend-v4.yml` para no romper su identificación,
-pero ahora ejecuta `monitor_v5.py` y se llama **Trader Agent V5 Unified Monitor**.
-Horario aproximado: minutos 07, 22, 37 y 52; GitHub puede retrasar u omitir ejecuciones.
+Entrada del panel: app.py. Monitor: monitor_v51.py.
+El workflow conserva el nombre de archivo auto-recommend-v4.yml pero ahora ejecuta V5.1.
+Se inicia también al publicar cambios del monitor en main. El primer arranque puede
+enviar un aviso de estado; las alertas de oportunidades requieren éxito de Telegram.
 
-La entrega se confirma solo cuando Telegram devuelve éxito. Se guarda el ID y su
-registro sombra juntos, después del envío. Un fallo deja la señal reintentable.
-No se garantiza exactamente una entrega ante cortes entre envío y checkpoint;
-mensajes con el mismo ID no representan operaciones adicionales.
+El monitor publica solo información pública de mercado en la rama separada market-data,
+mediante el token efímero de GitHub Actions con permiso de contenido. No se instala un
+token de escritura en Streamlit ni se solicitan claves nuevas al usuario.
+No se publican capital, cuenta, credenciales ni bitácoras. La rama separada evita reiniciar
+la app al actualizar datos. Si se rechaza la publicación, falla visiblemente y no busca
+otro destino ni relaja permisos.
 
-Las sombras PAPER llevan PENDING/OPEN/CLOSED/EXPIRED, vencimiento de alerta de diez
-minutos y límite de permanencia de 72 horas, con seguimiento por velas de un minuto.
-No confirman fills reales. Se excluye el minuto parcialmente transcurrido de la
-alerta por ambigüedad; gaps, límites no ejecutados y funding intrabar siguen siendo
-fuentes de diferencia. No utilizar resultados sombra como resultados reales.
+Las sombras PAPER registran una simulación activa a la vez con el presupuesto fijo.
+Las pausas por pérdidas simuladas conservan umbrales diario 1,5%, semanal 3% y drawdown 5%.
+Se continúa mostrando el mercado durante una pausa. Estas sombras no prueban que el usuario
+ejecutó ni supervisan sus posiciones reales. Las nuevas candidatas del panel no son una
+medición de exposición de cuenta.
 
-Todos los activos comparten un mismo bucket de riesgo, hasta 1% y máximo dos sombras
-activas; se evita repetir un activo. También se reservan nocional Spot o margen Futures
-y costos de las sombras abiertas antes de dimensionar otra operación, sin reutilizar
-el mismo capital disponible. El límite no usa una matriz de correlaciones.
-Pausas: pérdida diaria 1,5%, semanal 3% y drawdown 5% en PAPER comparable con el mismo
-capital; el panel también puede pausar con cierres REAL_MANUAL declarados. El monitor
-no conoce automáticamente tu pérdida real, órdenes pendientes ni Stops de Binance:
-debes actualizar riesgo comprometido y revisar posiciones antes de cada piloto.
+El estado de simulación usa cache y artifacts; no es una base contable durable. La bitácora
+manual y lectura de cuenta de V5 se conservan en código/historial, pero se retiraron de la
+pantalla principal para simplificarla. No se borra ningún archivo privado exportado.
 
-El estado cloud utiliza cache GitHub y checkpoints en artifacts por 30 días. El cache
-puede ser desalojado: no es una base de datos duradera ni una bitácora contable. Descarga
-checkpoints importantes. La bitácora del panel es privada por sesión y exportable;
-no se comparte automáticamente con cloud y se pierde al reiniciar si no la exportas.
+El perfil JSON se conserva por compatibilidad técnica. Los puntos de entrada actuales
+aplican el riesgo fijo 1,5%; las antiguas variables de riesgo no lo sobrescriben.
+El monitor usa un presupuesto neutral para investigación. Por eso Telegram no muestra
+montos ni exige sincronizar el capital del panel.
 
-**Cuenta / monitor** permite lecturas Spot y, si la API de lectura lo admite, posiciones
-y eventos de PnL/comisiones/funding Futures. No reconstruye automáticamente operaciones
-por posición ni enlaza fills con cada señal. Ante rechazo, usa reportes de Binance;
-NO actives permisos de trading para resolver una lectura. No publiques secretos.
-
-## Pruebas y alcance
-
-Ejecutar `python -m unittest discover -s tests -v` y `python -m compileall -q .`.
-Hay pruebas de capital editable/recalculo, tamaño/fees/riesgo, mínimos Binance,
-particiones purgadas, no seleccionar sobre TEST, datos nativos sin proxy, expiración,
-delivery confirmado, bitácoras separadas y pausas. Usan datos sintéticos y mocks:
-**no prueban rentabilidad**, conectividad con tu cuenta ni entrega Telegram real.
-
-Ningún módulo V5 coloca, cancela o modifica órdenes ni transfiere o retira dinero.
-Permanecen archivos V3/V4 por compatibilidad/historial; solo app.py y el workflow
-principal usan V5. El objetivo no convierte al agente en un instrumento de renta fija.
+Las pruebas usan casos sintéticos, mocks y Streamlit AppTest. Verifican funcionamiento,
+no rentabilidad, fills, ejecución real ni cumplimiento automático del riesgo de cuenta.

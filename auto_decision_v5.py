@@ -9,7 +9,7 @@ import pandas as pd
 
 from auto_decision_v42 import enrich_auto, _mask
 from futures_lab import LabCosts, bars_for_years, enrich_lab, simulate_config
-from profile_v5 import TradingProfile
+from profile_v5 import TradingProfile, FIXED_RISK_PCT
 from market_v5 import history, funding_history, quote, exchange_rules, funding_reserve
 from risk_v5 import size_order
 from statistics_v5 import selection_score, final_evidence
@@ -95,16 +95,17 @@ def automatic_recommendation(symbol, cfg=None, operation_budget_cop=None, risk_p
     if profile is None:
         capital = float(operation_budget_cop or 1_000_000)
         profile = TradingProfile(capital_cop=capital, available_cop=capital,
-                                 risk_pct=float(risk_pct or .005), cop_per_usdt=float(cop_per_usdt or 3350))
+                                 risk_pct=FIXED_RISK_PCT, cop_per_usdt=float(cop_per_usdt or 3350))
     base = {"version": "V5", "symbol": symbol, "mode": profile.mode,
             "operation_budget_cop": profile.capital_cop, "risk_budget_cop": profile.risk_budget_cop}
     if profile.risk_budget_cop <= 0:
         return {**base, "state": "NO OPERAR", "reason": "Riesgo conjunto ya comprometido"}
     cs = candidates if candidates is not None else detect_current_candidates(symbol)
+    detected_errors = list(getattr(detect_current_candidates, "last_errors", [])) if candidates is None else []
     if not cs:
         return {**base, "state": "NO OPERAR", "reason": "Sin señal nativa completa y régimen 1D compatible",
-                "data_errors": getattr(detect_current_candidates, "last_errors", [])}
-    evaluations, errors = [], []
+                "data_errors": detected_errors}
+    evaluations, errors = [], detected_errors
     for candidate in cs:
         try:
             e = evaluate_for_selection(symbol, candidate, profile)
@@ -126,7 +127,7 @@ def automatic_recommendation(symbol, cfg=None, operation_budget_cop=None, risk_p
     drift = abs(live - c["signal_close"]) / max(c["atr"], 1e-12)
     if drift > .5:
         return {**base, "state": "ESPERAR", "reason": f"Precio alejado {drift:.2f} ATR; no perseguir",
-                "stats": stats}
+                "stats": stats, "data_errors": errors}
     row, atr = c["row"], c["atr"]
     if c["direction"] == "LONG":
         stop = min(live - 1.25*atr, float(row.swing_low_10) - .10*atr)
@@ -140,7 +141,7 @@ def automatic_recommendation(symbol, cfg=None, operation_budget_cop=None, risk_p
         sized = size_order(profile, live, stop, tp, c["direction"], c["instrument"], rules,
                            reserve, snapshot["spread_fraction"])
     except ValueError as exc:
-        return {**base, "state": "ESPERAR", "reason": str(exc), "stats": stats}
+        return {**base, "state": "ESPERAR", "reason": str(exc), "stats": stats, "data_errors": errors}
     created = pd.Timestamp.now(tz="UTC")
     return {**base, **sized, "state": "OPERACIÓN CANDIDATA", "symbol": symbol,
             "reason": f"{c['setup']} · selección VALIDATION · TEST {stats['evidence']} · {profile.mode}",

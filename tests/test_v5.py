@@ -26,7 +26,7 @@ RULES = {"tick_size": ".01", "step_size": ".001", "min_qty": .001, "max_qty": 10
 
 
 def profile(**kwargs):
-    return replace(TradingProfile(cop_per_usdt=4000, fx_confirmed=True), **kwargs)
+    return replace(TradingProfile(cop_per_usdt=4000, fx_confirmed=True, risk_pct=.005, max_open_risk_pct=.01), **kwargs)
 
 
 class ProfileTests(unittest.TestCase):

@@ -1,12 +1,19 @@
-name: Trader Agent V5 Unified Monitor
+name: Trader Agent V5.1 Automatic Market
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'monitor_v51.py'
+      - 'dashboard_v51.py'
+      - 'fx_v51.py'
+      - '.github/workflows/auto-recommend-v4.yml'
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "2-59/5 * * * *"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: trader-agent-v4-auto
@@ -16,16 +23,10 @@ jobs:
   monitor-v5:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      TRADER_CAPITAL_COP: ${{ vars.TRADER_CAPITAL_COP }}
-      TRADER_AVAILABLE_COP: ${{ vars.TRADER_AVAILABLE_COP }}
-      TRADER_RISK_PCT: ${{ vars.TRADER_RISK_PCT }}
-      TRADER_COP_PER_USDT: ${{ vars.TRADER_COP_PER_USDT }}
-      TRADER_COMMITTED_RISK_COP: ${{ vars.TRADER_COMMITTED_RISK_COP }}
-      TRADER_FX_CONFIRMED: ${{ vars.TRADER_FX_CONFIRMED }}
-      TRADER_MODE: ${{ vars.TRADER_MODE }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -41,11 +42,15 @@ jobs:
             trader-v5-state-
       - name: Dependencies
         run: python -m pip install -r requirements.txt
-      - name: Read-only V5 monitor and acknowledged Telegram delivery
+      - name: Automatic market review and opportunity alerts (no trading)
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python monitor_v5.py
+        run: python monitor_v51.py
+      - name: Publish public market report (no user capital or account data)
+        env:
+          V51_PUBLISH_TOKEN: ${{ github.token }}
+        run: python publish_market_v51.py
       - name: Persist acknowledged state (also after errors)
         if: always()
         uses: actions/cache/save@v4

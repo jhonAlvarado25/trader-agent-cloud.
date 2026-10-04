@@ -34,6 +34,8 @@ def _request(path: str, params: dict, timeout: int = 12):
             if r.status_code == 200:
                 _last_working_base = base
                 return r.json()
+            if r.status_code in (401, 403, 418, 429, 451):
+                raise RuntimeError(f"Binance Spot bloqueado: HTTP {r.status_code}; no probar otras rutas")
             errors.append(f"{base}: HTTP {r.status_code}")
         except requests.RequestException as exc:
             errors.append(f"{base}: {type(exc).__name__}")

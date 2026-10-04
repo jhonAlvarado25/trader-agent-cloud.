@@ -1,20 +1,25 @@
-# Trader Agent Cloud V5
+# Trader Agent Cloud V5.1 · Simple
 
-Capital inicial **COP 1.000.000**, editable desde el panel. Riesgo inicial **0,5%**.
-Meta comparativa **15–20% EA**, no promesa ni cuota de operaciones. Modo inicial **PAPER**.
+Un solo dato: **capital disponible para invertir en COP**. Riesgo fijo **1,5% por operación**.
+Pantalla única, actualización automática y campos de Binance recalculados para ese capital.
+La meta 15–20% EA no es una promesa. No se colocan órdenes automáticamente.
 
-- Calculador de cantidad, nocional, margen, SL/TP y riesgo con capital manual.
+- Decisión automática: esperar, observar o candidata para revisión manual.
+- Monitor cloud programado cada 5 minutos; puede retrasarse. Panel cada 30 segundos activo.
+- Precios, variación 24 h, tendencia diaria y motivos de espera para diez activos.
+- Capital, cantidad, nocional, margen, SL/TP y costos calculados sin configurar estrategias.
+- Conversión automática estimada mediante TRM + reserva 3%; no cotización P2P ni costo real USDT.
 - Datos nativos separados Spot/Futures y bloqueo cuando no hay datos fiables.
 - Selección por VALIDATION y comprobación TEST independiente de la selección.
 - Validación por bloques, costos estresados y seguimiento sombra PAPER.
-- Telegram con confirmación de entrega; valores siempre sujetos a revalidación.
-- Cuenta Binance solo lectura; nunca abre órdenes ni mueve fondos.
+- Telegram avisa de candidatas; los montos se calculan en el panel, no con otro capital cloud.
+- Informe público en rama market-data; no contiene capital, saldos ni bitácoras privadas.
+- Sin pestañas de configuración ni archivos JSON que deba manejar el usuario.
 
-Consulta **[V5_GUIA.md](V5_GUIA.md)** para usar el iPhone, actualizar también el capital
-del monitor Telegram y conocer los límites de la validación, estado y ejecución.
-Cambiar capital en el panel no sincroniza automáticamente GitHub Actions.
+Consulta **[V5_GUIA.md](V5_GUIA.md)**. El código de lectura de cuenta y bitácora se conserva,
+pero no se carga ni se solicitan credenciales en la pantalla simplificada.
 
-## Historial anterior (V3/V4; no define la operación actual V5)
+## Historial anterior (V3/V4; no define la operación actual V5.1)
 
 V3 cuantitativa para análisis Spot con monitor programado y alertas para revisión. No ejecuta órdenes ni accede a una cuenta Binance.
 
