@@ -1,4 +1,4 @@
-name: Trader Agent V5.2 CI
+name: Trader Agent V5.3 CI
 
 on:
   push:
@@ -44,7 +44,8 @@ jobs:
           import publish_market_v51
           import realtime_v52
           import service_v52
-          print("Trader Agent V5 imports OK")
+          import supervisor_v53
+          print("Trader Agent V5.3 imports OK")
           PY
 
       - name: Risk, statistics, delivery and capital editor regression tests
