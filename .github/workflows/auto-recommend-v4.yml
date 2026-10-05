@@ -1,4 +1,4 @@
-name: Trader Agent V5.1 Automatic Market
+name: Trader Agent V5.3 Resilient Market
 
 on:
   workflow_dispatch:
@@ -6,64 +6,76 @@ on:
     branches: [main]
     paths:
       - 'monitor_v51.py'
+      - 'supervisor_v53.py'
+      - 'market.py'
+      - 'market_v5.py'
+      - 'auto_decision_v5.py'
       - 'dashboard_v51.py'
+      - 'publish_market_v51.py'
       - 'fx_v51.py'
       - '.github/workflows/auto-recommend-v4.yml'
   schedule:
-    - cron: "2-59/5 * * * *"
+    # One hourly start is more reliable than asking GitHub to create 12 jobs/hour.
+    # Once started, the supervisor performs target 5-minute cycles inside the job.
+    - cron: "17 * * * *"
 
 permissions:
   contents: write
 
 concurrency:
-  group: trader-agent-v4-auto
+  group: trader-agent-v53-supervisor
   cancel-in-progress: false
 
 jobs:
-  monitor-v5:
+  resilient-monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - name: Restore V5 state and native historical cache
+
+      - name: Restore state and historical cache
         uses: actions/cache/restore@v4
         with:
           path: |
             .state/v5_state.json
             .state/v5_market
-          key: trader-v5-state-${{ github.run_id }}-${{ github.run_attempt }}
+          key: trader-v53-state-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            trader-v53-state-
             trader-v5-state-
+
       - name: Dependencies
         run: python -m pip install -r requirements.txt
-      - name: Automatic market review and opportunity alerts (no trading)
+
+      - name: Resilient market supervision
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python monitor_v51.py
-      - name: Publish public market report (no user capital or account data)
-        env:
           V51_PUBLISH_TOKEN: ${{ github.token }}
-        run: python publish_market_v51.py
-      - name: Persist acknowledged state (also after errors)
+          TRADER_SUPERVISOR_ROUNDS: ${{ github.event_name == 'schedule' && '12' || '1' }}
+        run: python supervisor_v53.py
+
+      - name: Persist acknowledged state
         if: always()
         uses: actions/cache/save@v4
         with:
           path: |
             .state/v5_state.json
             .state/v5_market
-          key: trader-v5-state-${{ github.run_id }}-${{ github.run_attempt }}
+          key: trader-v53-state-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Export shadow audit checkpoint
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v5-shadow-audit-${{ github.run_id }}
+          name: v53-shadow-audit-${{ github.run_id }}
           path: .state/v5_state.json
           include-hidden-files: true
           if-no-files-found: warn
