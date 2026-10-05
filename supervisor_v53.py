@@ -4,27 +4,31 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import subprocess
-import sys
 import time
+
+from monitor_v51 import OUTPUT, run_scan
+from publish_market_v51 import publish
+from state_v5 import load_state
 
 TARGET_SECONDS = 300
 SNAPSHOT = Path(".state/market_snapshot.json")
 
 
 def run_cycle(number: int) -> dict:
-    env = os.environ.copy()
-    # Keep the workflow summary compact; the supervisor writes one final line.
-    env.pop("GITHUB_STEP_SUMMARY", None)
     started = time.monotonic()
-    subprocess.run([sys.executable, "monitor_v51.py"], check=True, timeout=270, env=env)
-    subprocess.run([sys.executable, "publish_market_v51.py"], check=True, timeout=60, env=env)
-    report = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+    state = load_state()
+    report = run_scan(state)
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    publish(OUTPUT)
     elapsed = time.monotonic() - started
     print(
         f"[V5.3] ciclo {number}: {len(report.get('markets', []))} activos · "
-        f"salud {report.get('health')} · alertas {report.get('alerts_delivered', 0)} · "
-        f"{elapsed:.1f}s"
+        f"salud {report.get('health')} · fuertes {report.get('alerts_delivered', 0)} · "
+        f"observación {report.get('observations_delivered', 0)} · {elapsed:.1f}s"
     )
     return report
 
@@ -54,8 +58,6 @@ def main() -> int:
     if path:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(summary)
-    # A failed cycle should make the job visible as unhealthy, but transient
-    # failures do not stop subsequent cycles.
     return 1 if failures == rounds else 0
 
 
