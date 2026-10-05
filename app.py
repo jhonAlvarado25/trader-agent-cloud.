@@ -1,6 +1,8 @@
 """V5.3: one screen, one investment amount, resilient automatic market research."""
 from __future__ import annotations
 import pandas as pd
+import requests
+from urllib.parse import urlparse
 import streamlit as st
 from dashboard_v51 import fetch_feed, feed_age, order_for_capital, binance_rows, MAX_FEED_AGE_SECONDS
 from profile_v5 import FIXED_RISK_PCT
@@ -39,10 +41,60 @@ def cop(value):
 
 @st.cache_data(ttl=60, max_entries=1, show_spinner=False)
 def readonly_binance_snapshot():
-    """Read private account data only inside this Streamlit session.
+    """Read private account data without exposing credentials to the browser."""
+    try:
+        bridge_url = str(st.secrets.get("BINANCE_READONLY_BRIDGE_URL", "")).strip()
+        bridge_token = str(st.secrets.get("BINANCE_READONLY_BRIDGE_TOKEN", "")).strip()
+    except Exception:
+        bridge_url = bridge_token = ""
 
-    Secrets are never written to GitHub, public feeds or logs.
-    """
+    if bridge_url or bridge_token:
+        if not bridge_url or not bridge_token:
+            return {"configured": True, "connected": False, "error": "Bridge URL/token incomplete"}
+        parsed = urlparse(bridge_url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            return {"configured": True, "connected": False, "error": "BINANCE_READONLY_BRIDGE_URL must use HTTPS"}
+        try:
+            response = requests.get(
+                bridge_url.rstrip("/") + "/snapshot",
+                headers={"Authorization": f"Bearer {bridge_token}"},
+                timeout=10,
+            )
+            data = response.json() if response.content else {}
+            if response.status_code == 451:
+                return {
+                    "configured": True,
+                    "connected": False,
+                    "restricted_location": True,
+                    "bridge": True,
+                    "error": data.get("error", "Bridge location rejected by Binance"),
+                }
+            if not response.ok or not data.get("ok"):
+                return {
+                    "configured": True,
+                    "connected": False,
+                    "bridge": True,
+                    "error": data.get("error", f"Bridge HTTP {response.status_code}"),
+                }
+            return {
+                "configured": True,
+                "connected": True,
+                "read_only": bool(data.get("read_only")),
+                "balances": data.get("balances", {}),
+                "usdt_free": float(data.get("usdt_free", 0)),
+                "usdt_locked": float(data.get("usdt_locked", 0)),
+                "usdt_total": float(data.get("usdt_total", 0)),
+                "bridge": True,
+                "error": None,
+            }
+        except Exception as exc:
+            return {
+                "configured": True,
+                "connected": False,
+                "bridge": True,
+                "error": f"{type(exc).__name__}: {str(exc)[:220]}",
+            }
+
     try:
         api_key = str(st.secrets["BINANCE_API_KEY"]).strip()
         api_secret = str(st.secrets["BINANCE_API_SECRET"]).strip()
@@ -166,7 +218,10 @@ with st.container(border=True):
                 "Portfolio Margin": bool(p.get("enablePortfolioMarginTrading", False)),
             })
     else:
-        st.success("CONECTADA · permisos verificados de SOLO LECTURA")
+        st.success(
+            "CONECTADA · permisos verificados de SOLO LECTURA"
+            + (" · conector regional HTTPS" if binance_private.get("bridge") else "")
+        )
         a, b = st.columns(2)
         a.metric("USDT libre", f"{binance_private.get('usdt_free', 0):,.2f}")
         b.metric("USDT bloqueado", f"{binance_private.get('usdt_locked', 0):,.2f}")
