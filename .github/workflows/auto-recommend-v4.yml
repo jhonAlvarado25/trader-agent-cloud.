@@ -59,7 +59,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           V51_PUBLISH_TOKEN: ${{ github.token }}
-          TRADER_SUPERVISOR_ROUNDS: ${{ github.event_name == 'schedule' && '12' || '1' }}
+          TRADER_SUPERVISOR_ROUNDS: ${{ github.event_name == 'schedule' && '11' || '1' }}
         run: python supervisor_v53.py
 
       - name: Persist acknowledged state
