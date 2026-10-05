@@ -15,6 +15,11 @@ class BinanceReadOnlyError(RuntimeError):
     pass
 
 
+class BinanceLocationRestricted(BinanceReadOnlyError):
+    """The cloud host is not eligible to access Binance.com account APIs."""
+    pass
+
+
 class BinanceReadOnlyClient:
     """Cliente HMAC de solo lectura para Binance Spot.
 
@@ -65,7 +70,11 @@ class BinanceReadOnlyClient:
             except Exception:
                 code = r.status_code
                 msg = r.text[:250]
-            raise BinanceReadOnlyError(f"Binance API {code}: {msg}")
+            message = f"Binance API {code}: {msg}"
+            lowered = str(msg).lower()
+            if r.status_code == 451 or "restricted location" in lowered or "eligibility" in lowered:
+                raise BinanceLocationRestricted(message)
+            raise BinanceReadOnlyError(message)
         return r.json()
 
     def permissions(self) -> dict:
