@@ -24,7 +24,8 @@ def json_safe(value):
 def public_plan(signal):
     allowed = ("version", "symbol", "instrument", "direction", "setup", "timeframe", "signal_time",
                "key", "atr", "entry", "stop", "take_profit", "evidence", "stats", "development",
-               "created_at", "expires_at", "reason")
+               "created_at", "expires_at", "reason", "market_source", "quote_source", "quote_quality",
+               "execution_requires_binance_check")
     return json_safe({k: signal[k] for k in allowed if k in signal})
 
 
@@ -90,6 +91,8 @@ def binance_rows(order):
             ("Par", symbol), ("Botón de apertura", "Comprar / Buy" if long else "Vender / Sell — abrir SHORT"),
             ("Tipo de entrada", "Limit"), ("Precio de entrada (USDT)", order["entry_text"]),
             (f"Cantidad ({asset})", order["qty_text"]), ("Valor de la posición (USDT)", f"{order['position_usdt']:.2f}")]
+    if order.get("execution_requires_binance_check"):
+        rows += [("Validación obligatoria", "Confirmar precio y precisión directamente en Binance antes de enviar")]
     if is_spot:
         rows += [("Después de la compra", "Proteger con OCO / TP-SL"),
                  ("Take Profit / precio de venta", order["tp_text"]),
