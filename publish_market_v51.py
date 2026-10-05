@@ -11,10 +11,10 @@ BRANCH = "market-data"
 
 def publish(path=".state/market_snapshot.json"):
     report = json.loads(Path(path).read_text(encoding="utf-8"))
-    allowed = {"version", "started_at", "finished_at", "scheduled_interval_minutes", "risk_pct", "fx", "markets",
+    allowed = {"version", "started_at", "finished_at", "scheduled_interval_minutes", "scheduler", "risk_pct", "fx", "markets",
                "candidate", "pause", "errors", "alerts_delivered", "health", "simulated_positions"}
-    if report.get("version") != "5.1" or set(report)-allowed:
-        raise ValueError("Solo se permite publicar el informe público V5.1")
+    if report.get("version") not in {"5.1", "5.3"} or set(report)-allowed:
+        raise ValueError("Solo se permite publicar el informe público V5.1/V5.3")
     forbidden = {"profile", "journal", "api_key", "api_secret", "capital_cop", "operation_budget_cop",
                  "available_cop", "TELEGRAM_BOT_TOKEN", "BINANCE_API_SECRET"}
     def check(value):
