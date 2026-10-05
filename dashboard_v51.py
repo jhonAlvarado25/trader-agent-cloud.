@@ -35,7 +35,7 @@ def fetch_feed():
     if len(response.content) > 1_000_000:
         raise ValueError("Informe demasiado grande")
     feed = response.json()
-    if feed.get("version") != "5.1" or not isinstance(feed.get("markets"), list):
+    if feed.get("version") not in {"5.1", "5.3"} or not isinstance(feed.get("markets"), list):
         raise ValueError("Informe de mercado incompatible")
     return feed
 
