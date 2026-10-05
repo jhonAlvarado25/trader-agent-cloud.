@@ -192,9 +192,30 @@ def revalidate_entry(signal, profile=None, snapshot=None, rules=None, now=None):
         action, execution = "COLOCAR LIMIT", entry
     else:
         return {"action": "NO ENTRAR", "reason": "Precio desplazado o señal invalidada", "order": None}
+    market_rules = exchange_rules(signal["symbol"], signal["instrument"]) if rules is None else rules
     sized = size_order(p, execution, stop, tp, signal["direction"], signal["instrument"],
-                       exchange_rules(signal["symbol"], signal["instrument"]) if rules is None else rules,
-                       funding_reserve(snap), snap["spread_fraction"])
-    return {"action": action, "reason": "Precio, cantidad y riesgo recalculados con datos nativos",
-            "current": current, "order": {**signal, **sized, "profile": asdict(p), "quote": snap,
-                                           "funding_reserve": funding_reserve(snap)}, "quoted_at": snap["quoted_at"]}
+                       market_rules, funding_reserve(snap), snap["spread_fraction"])
+    proxy = snap.get("quote_quality") == "PROXY_SPOT"
+    if proxy:
+        action = "REVALIDAR EN BINANCE"
+        reason = (
+            "El servidor cloud no puede leer la cotización Futures nativa. "
+            "Los valores son conservadores y deben confirmarse contra el precio/precisión de Binance antes de enviar la orden."
+        )
+    else:
+        reason = "Precio, cantidad y riesgo recalculados con datos nativos"
+    return {
+        "action": action,
+        "reason": reason,
+        "current": current,
+        "order": {
+            **signal,
+            **sized,
+            "profile": asdict(p),
+            "quote": snap,
+            "funding_reserve": funding_reserve(snap),
+            "execution_requires_binance_check": proxy or bool(signal.get("execution_requires_binance_check")),
+            "rules_source": market_rules.get("source"),
+        },
+        "quoted_at": snap["quoted_at"],
+    }
