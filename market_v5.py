@@ -129,6 +129,17 @@ def funding_history(symbol, start_ms, end_ms):
         return hit[1].copy()
     start = pd.to_datetime(start_ms, unit="ms", utc=True)
     end = pd.to_datetime(end_ms, unit="ms", utc=True)
+    long_history = (end-start) > pd.Timedelta(days=30)
+    month_key = f"{start.strftime('%Y-%m')}_{end.strftime('%Y-%m')}"
+    disk = Path(".state/v5_market") / f"FUNDING_{symbol}_{month_key}.parquet"
+    if long_history and disk.exists() and time.time()-disk.stat().st_mtime < 21600:
+        cached = pd.read_parquet(disk)
+        cached["funding_time"] = pd.to_datetime(cached["funding_time"], utc=True)
+        cached = cached[(cached["funding_time"] >= start) & (cached["funding_time"] <= end)].copy()
+        if not cached.empty:
+            cached.attrs["source"] = "Funding histórico cacheado"
+            _CACHE[key] = (time.time(), cached)
+            return cached.copy()
     try:
         cursor, rows = int(start_ms), []
         while cursor <= end_ms:
@@ -172,6 +183,9 @@ def funding_history(symbol, start_ms, end_ms):
     if "mark_price" in df.columns and not (df["mark_price"] > 0).all():
         raise RuntimeError("Mark price histórico inválido")
     df.attrs["source"] = source
+    if long_history:
+        disk.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(disk, index=False)
     _CACHE[key] = (time.time(), df)
     return df.copy()
 
