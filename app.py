@@ -6,7 +6,13 @@ from dashboard_v51 import fetch_feed, feed_age, order_for_capital, binance_rows,
 from profile_v5 import FIXED_RISK_PCT
 from monitor_status import format_local
 from realtime_v52 import realtime_url, fetch_realtime, order_for_realtime, MAX_TICK_AGE
-from binance_readonly import BinanceReadOnlyClient, BinanceReadOnlyError, balance_map, permission_is_read_only
+from binance_readonly import (
+    BinanceReadOnlyClient,
+    BinanceReadOnlyError,
+    BinanceLocationRestricted,
+    balance_map,
+    permission_is_read_only,
+)
 
 REALTIME = bool(realtime_url())
 
@@ -31,6 +37,7 @@ def cop(value):
     return "$" + f"{float(value):,.0f}".replace(",", ".") + " COP"
 
 
+@st.cache_data(ttl=60, max_entries=1, show_spinner=False)
 def readonly_binance_snapshot():
     """Read private account data only inside this Streamlit session.
 
@@ -71,10 +78,18 @@ def readonly_binance_snapshot():
                 usdt_total=float(usdt["total"]),
             )
         return result
+    except BinanceLocationRestricted as exc:
+        return {
+            "configured": True,
+            "connected": False,
+            "restricted_location": True,
+            "error": str(exc),
+        }
     except BinanceReadOnlyError as exc:
         return {
             "configured": True,
             "connected": False,
+            "restricted_location": False,
             "error": str(exc),
         }
     except Exception as exc:
@@ -96,10 +111,12 @@ def explain_binance_error(message):
         return "La firma no coincide. Revise que API Key y Secret correspondan a la misma clave HMAC y que no tengan espacios adicionales."
     if "-1021" in text:
         return "Binance detectó una diferencia de tiempo. Recargue la app; si persiste, revisaremos la sincronización del cliente."
-    if "451" in text:
+    lowered = text.lower()
+    if "451" in text or "restricted location" in lowered or "eligibility" in lowered:
         return (
-            "El servidor de Streamlit está siendo restringido por Binance desde su región cloud. "
-            "Las claves pueden estar correctas; este error es de acceso del servidor y no de su cuenta."
+            "Binance está rechazando la ubicación del servidor donde corre Streamlit. "
+            "Esto no demuestra que la API Key o la Secret sean incorrectas. "
+            "No habilite trading ni retiros para intentar resolverlo."
         )
     return "No fue posible validar la conexión. No cambie permisos de trading ni retiros para intentar resolverlo."
 
@@ -119,8 +136,19 @@ with st.container(border=True):
         st.info("Las credenciales todavía no están disponibles en Streamlit Secrets.")
         st.caption("Se esperan BINANCE_API_KEY y BINANCE_API_SECRET. No las escriba en GitHub ni en el chat.")
     elif not binance_private.get("connected"):
-        st.error("API configurada, pero Binance no confirmó la conexión.")
-        st.write(explain_binance_error(binance_private.get("error")))
+        if binance_private.get("restricted_location"):
+            st.warning("CLAVES GUARDADAS · SERVIDOR STREAMLIT BLOQUEADO POR REGIÓN")
+            st.write(
+                "Binance rechazó la ubicación del servidor de Streamlit antes de poder validar su cuenta. "
+                "Por lo tanto, este mensaje no significa que sus claves estén mal."
+            )
+            st.write(
+                "La conexión privada de Binance necesita ejecutarse desde un servidor en una región elegible. "
+                "El análisis público del agente y Telegram continúan funcionando sin usar estas claves."
+            )
+        else:
+            st.error("API configurada, pero Binance no confirmó la conexión.")
+            st.write(explain_binance_error(binance_private.get("error")))
         with st.expander("Detalle técnico"):
             st.code(binance_private.get("error") or "Sin detalle", language="text")
     elif not binance_private.get("read_only"):
