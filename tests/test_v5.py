@@ -171,11 +171,18 @@ class DataAndExecutionTests(unittest.TestCase):
             self.assertEqual(result["funding_interval_hours"], 4)
             spot.assert_not_called()
 
-    def test_futures_failure_never_uses_spot(self):
-        with patch("market_v5.futures_request", side_effect=RuntimeError("451")), patch("market_v5.get_klines") as spot:
-            with self.assertRaises(RuntimeError):
-                history("NATIVEONLYUSDT", "1h", 300, "FUTURES")
-            spot.assert_not_called()
+    def test_futures_451_uses_explicit_research_fallback(self):
+        times = pd.date_range("2026-01-01", periods=300, freq="h", tz="UTC")
+        fallback = pd.DataFrame({
+            "open_time": times,
+            "close_time": times + pd.Timedelta(hours=1) - pd.Timedelta(milliseconds=1),
+            "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 10.0,
+        })
+        with patch("market_v5.futures_request", side_effect=RuntimeError("451")), \
+             patch("market_v5.fallback_futures_klines", return_value=fallback), \
+             patch("market_v5.get_futures_data_source", return_value="Spot proxy test"):
+            result = history("NATIVEONLYUSDT", "1h", 300, "FUTURES")
+        self.assertEqual(result.attrs["source"], "Spot proxy test")
 
     def signal(self):
         now = pd.Timestamp.now(tz="UTC")
@@ -187,6 +194,20 @@ class DataAndExecutionTests(unittest.TestCase):
         return {"price": price, "bid": price, "ask": price, "spread_fraction": 0,
                 "instrument": "FUTURES", "funding_rate": .0001, "funding_interval_hours": 8,
                 "quoted_at": pd.Timestamp.now(tz="UTC").isoformat()}
+
+    def test_proxy_futures_quote_forces_manual_binance_recheck(self):
+        now = pd.Timestamp.now(tz="UTC")
+        signal = self.signal()
+        proxy = {
+            "price": 100, "bid": 100, "ask": 100, "spread_fraction": .001,
+            "instrument": "FUTURES", "funding_rate": .0001, "funding_interval_hours": 8,
+            "quoted_at": now.isoformat(), "quote_quality": "PROXY_SPOT",
+            "source": "Binance Spot público como proxy conservador de Futures",
+        }
+        with patch("auto_decision_v5.exchange_rules", return_value=RULES):
+            result = revalidate_entry(signal, snapshot=proxy)
+        self.assertEqual(result["action"], "REVALIDAR EN BINANCE")
+        self.assertTrue(result["order"]["execution_requires_binance_check"])
 
     def test_expired_alert_has_no_order(self):
         s = self.signal()
