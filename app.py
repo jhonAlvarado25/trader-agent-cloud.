@@ -1,4 +1,4 @@
-"""V5.1: one screen, one investment amount, automatic market research."""
+"""V5.3: one screen, one investment amount, resilient automatic market research."""
 from __future__ import annotations
 import pandas as pd
 import streamlit as st
@@ -20,7 +20,7 @@ div[data-testid="stMetricLabel"]{font-size:.78rem}
 div[data-testid="stMetricValue"]{font-size:1.55rem}
 @media(max-width:700px){.block-container{padding:1rem .8rem}h1{font-size:1.7rem!important}
 div[data-testid="stMetricValue"]{font-size:1.2rem}}
-</style><div class="eyebrow">TRADER AGENT · V5.2 SIMPLE</div>
+</style><div class="eyebrow">TRADER AGENT · V5.3 RESILIENTE</div>
 """, unsafe_allow_html=True)
 st.title("Una cifra. Una decisión clara.")
 st.caption("El agente revisa el mercado, elige el tipo de operación y calcula los campos de Binance. Usted decide si ejecuta.")
@@ -74,7 +74,7 @@ def automatic_screen():
         if report.get("blocked"):
             st.warning(report["blocked"])
     else:
-        st.caption("Modo actual: revisión programada cada 5 min; pantalla cada 30 s. El servicio de un segundo está preparado, pendiente de activar en un servidor permanente. Puede haber retrasos.")
+        st.caption("Modo actual: supervisor cloud con ciclos objetivo cada 5 min durante cada sesión horaria. GitHub puede retrasar el inicio de una sesión; la pantalla indica siempre la hora real del último informe.")
 
     try:
         guidance = (order_for_realtime(report, float(st.session_state["capital_cop"])) if REALTIME
@@ -90,7 +90,12 @@ def automatic_screen():
             market = "Spot" if order["instrument"] == "SPOT" else "Futuros"
             st.subheader(f"Candidata para revisar: {order['symbol']}")
             st.write(f"**{market} · {direction} · análisis {order['timeframe']}**")
-            st.write("La regla superó sus filtros históricos y se revalidó el precio. Esto no garantiza que esta operación gane.")
+            st.write("La regla superó sus filtros históricos y se revalidó el precio disponible. Esto no garantiza que esta operación gane.")
+            if guidance["action"] == "REVALIDAR EN BINANCE" or order.get("execution_requires_binance_check"):
+                st.warning(
+                    "El servidor cloud está usando una referencia conservadora para Futures porque Binance bloqueó su REST nativo. "
+                    "Antes de enviar la orden, confirme en Binance el precio de entrada y que la precisión/cantidad sean aceptadas."
+                )
             if guidance["action"] == "COLOCAR LIMIT":
                 st.info("Esperar el precio de entrada con una orden LIMIT. No perseguir el precio con una orden de mercado.")
             a, b = st.columns(2)
@@ -143,7 +148,7 @@ def automatic_screen():
             stats = candidate["stats"]
             st.write(f"Clasificación histórica: {candidate['evidence']} · operaciones TEST: {stats.get('trades_test', 0)}")
             st.write("La clasificación es evidencia histórica, no una probabilidad de ganar. El riesgo de 1,5% se considera al evaluar el drawdown; aumentar el riesgo puede reducir las señales admisibles.")
-        st.write("Telegram envía avisos por oportunidad, no cantidades basadas en otro capital. Los importes se calculan aquí; no necesita manejar archivos JSON.")
+        st.write("Telegram distingue CANDIDATA FUERTE de OPORTUNIDAD EN OBSERVACIÓN. Solo una candidata FUERTE puede mostrar campos de ejecución; una observación no es una entrada.")
         st.write("El capital se conserva durante esta sesión. Si se reinicia, introdúzcalo nuevamente. No se publica en el informe de mercado.")
         st.write("La vigilancia sigue señales candidatas, no confirma sus compras, ventas, saldos ni pérdidas reales. El análisis de operaciones simuladas previas se actualiza con la investigación, no cada segundo. Las pausas de ese modelo se identifican como PAPER.")
         st.caption("Objetivo de referencia: 15–20% EA, sin garantía. No se fuerzan operaciones para llegar a él. Comisiones, conversión, funding y ejecución pueden diferir de los supuestos.")
