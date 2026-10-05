@@ -45,8 +45,15 @@ def detect_current_candidates(symbol, cfg=None):
                         row = f.iloc[-1]
                         if not bool(row["long_signal" if direction == "LONG" else "short_signal"]):
                             continue
-                        out.append({**c, "signal_time": row.close_time.isoformat(), "signal_close": float(row.close),
-                                    "atr": float(row.atr), "row": row, "score": 1})
+                        out.append({
+                            **c,
+                            "signal_time": row.close_time.isoformat(),
+                            "signal_close": float(row.close),
+                            "atr": float(row.atr),
+                            "row": row,
+                            "score": 1,
+                            "market_source": raw.attrs.get("source", f"{instrument} sin etiqueta de fuente"),
+                        })
         except Exception as exc:
             errors.append(f"{instrument}: {type(exc).__name__}: {str(exc)[:160]}")
     detect_current_candidates.last_errors = errors
@@ -150,6 +157,10 @@ def automatic_recommendation(symbol, cfg=None, operation_budget_cop=None, risk_p
             "evidence": stats["evidence"], "stats": stats, "development": winner["development"],
             "created_at": created.isoformat(), "expires_at": (created+pd.Timedelta(minutes=10)).isoformat(),
             "max_holding_hours": 72, "funding_reserve": reserve, "quote": snapshot,
+            "market_source": c.get("market_source"),
+            "quote_source": snapshot.get("source"),
+            "quote_quality": snapshot.get("quote_quality", "NATIVA"),
+            "execution_requires_binance_check": snapshot.get("quote_quality") == "PROXY_SPOT",
             "profile": asdict(profile), "data_errors": errors}
 
 
