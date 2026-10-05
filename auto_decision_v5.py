@@ -153,9 +153,9 @@ def automatic_recommendation(symbol, cfg=None, operation_budget_cop=None, risk_p
             "profile": asdict(profile), "data_errors": errors}
 
 
-def revalidate_entry(signal, profile=None, snapshot=None):
+def revalidate_entry(signal, profile=None, snapshot=None, rules=None, now=None):
     """Refresh both price AND size. Return no order values when the plan has expired."""
-    now = pd.Timestamp.now(tz="UTC")
+    now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
     if now > pd.Timestamp(signal["expires_at"]):
         return {"action": "NO ENTRAR", "reason": "La alerta venció; requiere una nueva validación", "order": None}
     p = profile or TradingProfile(**signal["profile"])
@@ -182,7 +182,7 @@ def revalidate_entry(signal, profile=None, snapshot=None):
     else:
         return {"action": "NO ENTRAR", "reason": "Precio desplazado o señal invalidada", "order": None}
     sized = size_order(p, execution, stop, tp, signal["direction"], signal["instrument"],
-                       exchange_rules(signal["symbol"], signal["instrument"]),
+                       exchange_rules(signal["symbol"], signal["instrument"]) if rules is None else rules,
                        funding_reserve(snap), snap["spread_fraction"])
     return {"action": action, "reason": "Precio, cantidad y riesgo recalculados con datos nativos",
             "current": current, "order": {**signal, **sized, "profile": asdict(p), "quote": snap,

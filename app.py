@@ -5,6 +5,9 @@ import streamlit as st
 from dashboard_v51 import fetch_feed, feed_age, order_for_capital, binance_rows, MAX_FEED_AGE_SECONDS
 from profile_v5 import FIXED_RISK_PCT
 from monitor_status import format_local
+from realtime_v52 import realtime_url, fetch_realtime, order_for_realtime, MAX_TICK_AGE
+
+REALTIME = bool(realtime_url())
 
 st.set_page_config(page_title="Trader · Su próxima decisión", page_icon="📈", layout="centered", initial_sidebar_state="collapsed")
 st.markdown("""
@@ -17,7 +20,7 @@ div[data-testid="stMetricLabel"]{font-size:.78rem}
 div[data-testid="stMetricValue"]{font-size:1.55rem}
 @media(max-width:700px){.block-container{padding:1rem .8rem}h1{font-size:1.7rem!important}
 div[data-testid="stMetricValue"]{font-size:1.2rem}}
-</style><div class="eyebrow">TRADER AGENT · V5.1 SIMPLE</div>
+</style><div class="eyebrow">TRADER AGENT · V5.2 SIMPLE</div>
 """, unsafe_allow_html=True)
 st.title("Una cifra. Una decisión clara.")
 st.caption("El agente revisa el mercado, elige el tipo de operación y calcula los campos de Binance. Usted decide si ejecuta.")
@@ -45,10 +48,10 @@ def current_order(feed, amount):
     return order_for_capital(feed, amount)
 
 
-@st.fragment(run_every=30)
+@st.fragment(run_every=1 if REALTIME else 30)
 def automatic_screen():
     try:
-        report = current_feed()
+        report = fetch_realtime() if REALTIME else current_feed()
         age = feed_age(report)
     except Exception:
         st.warning("Esperar · todavía no puedo confirmar una revisión reciente del monitor.")
@@ -57,7 +60,7 @@ def automatic_screen():
             st.markdown("[Consultar monitor](https://github.com/jhonAlvarado25/trader-agent-cloud./actions)")
             st.caption("La programación del monitor no prueba que una revisión haya terminado. Aquí aparecerá la fecha del último informe recibido.")
         return
-    recent = -5 <= age <= MAX_FEED_AGE_SECONDS
+    recent = -1 <= age <= MAX_TICK_AGE if REALTIME else -5 <= age <= MAX_FEED_AGE_SECONDS
     time_text = format_local(report["finished_at"])
     if not recent:
         st.warning(f"Monitor sin actualización reciente · último informe: {time_text}")
@@ -65,10 +68,17 @@ def automatic_screen():
         st.info(f"Última revisión: {time_text} · cobertura parcial")
     else:
         st.caption(f"Última revisión confirmada: {time_text} · hora Colombia")
-    st.caption("Nube: revisión programada cada 5 min, aun con la app cerrada. Pantalla: actualización cada 30 s mientras esté abierta. Puede haber retrasos.")
+    if REALTIME:
+        st.caption("Vigilancia de señales: cada segundo en el servidor. Los precios conservan su hora real de recepción; si dejan de llegar, se retiran los valores de entrada.")
+        st.caption(f"Análisis de estrategia: {format_local(report['research_at'])} · Telegram: {report.get('telegram_status', 'SIN CONFIRMAR')}")
+        if report.get("blocked"):
+            st.warning(report["blocked"])
+    else:
+        st.caption("Modo actual: revisión programada cada 5 min; pantalla cada 30 s. El servicio de un segundo está preparado, pendiente de activar en un servidor permanente. Puede haber retrasos.")
 
     try:
-        guidance = current_order(report, float(st.session_state["capital_cop"]))
+        guidance = (order_for_realtime(report, float(st.session_state["capital_cop"])) if REALTIME
+                    else current_order(report, float(st.session_state["capital_cop"])))
     except Exception as exc:
         guidance = {"action": "ESPERAR", "order": None,
                     "reason": str(exc) if isinstance(exc, ValueError) else "No se pudo revalidar el precio nativo. Espere a la siguiente revisión."}
@@ -135,7 +145,7 @@ def automatic_screen():
             st.write("La clasificación es evidencia histórica, no una probabilidad de ganar. El riesgo de 1,5% se considera al evaluar el drawdown; aumentar el riesgo puede reducir las señales admisibles.")
         st.write("Telegram envía avisos por oportunidad, no cantidades basadas en otro capital. Los importes se calculan aquí; no necesita manejar archivos JSON.")
         st.write("El capital se conserva durante esta sesión. Si se reinicia, introdúzcalo nuevamente. No se publica en el informe de mercado.")
-        st.write("El seguimiento automático de operaciones es simulado y no confirma sus compras, ventas, saldos ni pérdidas reales. Las pausas de ese modelo se identifican como PAPER.")
+        st.write("La vigilancia sigue señales candidatas, no confirma sus compras, ventas, saldos ni pérdidas reales. El análisis de operaciones simuladas previas se actualiza con la investigación, no cada segundo. Las pausas de ese modelo se identifican como PAPER.")
         st.caption("Objetivo de referencia: 15–20% EA, sin garantía. No se fuerzan operaciones para llegar a él. Comisiones, conversión, funding y ejecución pueden diferir de los supuestos.")
         st.markdown("[Estado del monitor](https://github.com/jhonAlvarado25/trader-agent-cloud./actions) · [Guía breve](https://github.com/jhonAlvarado25/trader-agent-cloud./blob/main/V5_GUIA.md)")
 

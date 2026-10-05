@@ -1,6 +1,7 @@
 from pathlib import Path
 import unittest
 from unittest.mock import patch
+import os
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 from test_v51 import feed_fixture, snapshot, RULES
@@ -54,6 +55,33 @@ class AppTests(unittest.TestCase):
         self.assertEqual(len(at.exception), 0)
         self.assertEqual(len(at.code), 0)
         self.assertTrue(any("observar" in x.value for x in at.subheader))
+
+    def test_realtime_screen_recalculates_without_rest_or_old_feed(self):
+        from test_v52 import prepared
+        engine, now = prepared()
+        feed = engine.tick(now)
+        feed["telegram_status"] = "SIN CONFIGURAR"
+        with patch.dict(os.environ, {"TRADER_REALTIME_URL": "http://localhost:8787/snapshot"}), \
+             patch("realtime_v52.fetch_realtime", return_value=feed), \
+             patch("auto_decision_v5.quote") as rest, patch("dashboard_v51.fetch_feed") as old:
+            at = AppTest.from_file(str(APP), default_timeout=10).run()
+            self.assertEqual(len(at.exception), 0)
+            self.assertEqual(len(at.number_input), 1)
+            self.assertEqual(len(at.code), 1)
+            at.number_input(key="capital_cop").set_value(2_000_000).run()
+            self.assertEqual(len(at.exception), 0)
+            self.assertIn("30.000", at.metric[0].value)
+        rest.assert_not_called()
+        old.assert_not_called()
+
+    def test_realtime_outage_hides_orders_without_fallback(self):
+        with patch.dict(os.environ, {"TRADER_REALTIME_URL": "http://localhost:8787/snapshot"}), \
+             patch("realtime_v52.fetch_realtime", side_effect=RuntimeError("disconnected")), \
+             patch("dashboard_v51.fetch_feed") as old:
+            at = AppTest.from_file(str(APP), default_timeout=10).run()
+            self.assertEqual(len(at.exception), 0)
+            self.assertEqual(len(at.code), 0)
+        old.assert_not_called()
 
 
 if __name__ == "__main__":

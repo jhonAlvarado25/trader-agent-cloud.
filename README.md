@@ -1,8 +1,13 @@
-# Trader Agent Cloud V5.1 · Simple
+# Trader Agent Cloud V5.2 · Simple
 
 Un solo dato: **capital disponible para invertir en COP**. Riesgo fijo **1,5% por operación**.
 Pantalla única, actualización automática y campos de Binance recalculados para ese capital.
 La meta 15–20% EA no es una promesa. No se colocan órdenes automáticamente.
+
+**V5.2 preparada, pendiente de alojamiento y activación:** servicio persistente con WebSocket
+y evaluación de señales cada segundo. Consulta [V52_ACTIVACION.md](V52_ACTIVACION.md).
+Sin `TRADER_REALTIME_URL`, el panel conserva el monitor programado V5.1 y lo identifica como tal.
+Cambiar código o aprobar CI no significa que el servicio de un segundo esté desplegado.
 
 - Decisión automática: esperar, observar o candidata para revisión manual.
 - Monitor cloud programado cada 5 minutos; puede retrasarse. Panel cada 30 segundos activo.

@@ -80,7 +80,7 @@ def market_brief(symbol):
     return {"trend": trend, "range_low_20h": float(last20.low.min()), "range_high_20h": float(last20.high.max())}
 
 
-def run_scan(state, symbols=None):
+def run_scan(state, symbols=None, notify=True):
     started = pd.Timestamp.now(tz="UTC")
     errors, markets, signals = [], [], []
     fx = None
@@ -124,7 +124,7 @@ def run_scan(state, symbols=None):
     chosen = select_candidate(signals)
     # Risk pause refers to simulated forward results, never an assertion about a real account.
     alerts = 0
-    if chosen and chosen.get("evidence") == "FUERTE" and not pause and fx:
+    if notify and chosen and chosen.get("evidence") == "FUERTE" and not pause and fx:
         try:
             guidance = revalidate_entry(chosen, profile)
             if guidance.get("order"):
