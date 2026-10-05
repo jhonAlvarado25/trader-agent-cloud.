@@ -160,7 +160,7 @@ def run_scan(state, symbols=None, notify=True):
                             "checked_at": pd.Timestamp.now(tz="UTC").isoformat()})
     chosen = select_candidate(signals)
     # Risk pause refers to simulated forward results, never an assertion about a real account.
-    alerts = 0
+    alerts, observations = 0, 0
     if notify and chosen and chosen.get("evidence") == "FUERTE" and not pause and fx:
         try:
             guidance = revalidate_entry(chosen, profile)
@@ -182,7 +182,8 @@ def run_scan(state, symbols=None, notify=True):
         try:
             watch = dict(chosen)
             watch["key"] = "OBS|" + chosen["key"]
-            deliver_once(state, watch, lambda s: telegram(observation_message(chosen)))
+            if deliver_once(state, watch, lambda s: telegram(observation_message(chosen))):
+                observations += 1
         except Exception as exc:
             errors.append(f"Aviso observación: {type(exc).__name__}")
     finished = pd.Timestamp.now(tz="UTC")
@@ -191,6 +192,7 @@ def run_scan(state, symbols=None, notify=True):
               "risk_pct": .015, "fx": fx, "markets": markets,
               "candidate": public_plan(chosen) if chosen else None, "pause": pause,
               "errors": list(dict.fromkeys(errors))[:40], "alerts_delivered": alerts,
+              "observations_delivered": observations,
               "health": "PARCIAL" if errors else "ACTUALIZADO",
               "simulated_positions": len([r for r in state["journal"] if r["status"] in {"OPEN", "PENDING"}])}
     state.update(last_run=finished.isoformat(), errors=report["errors"], pause=pause)
@@ -215,7 +217,7 @@ def main():
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
     text = (f"V5.3: {len(report['markets'])} activos revisados · riesgo fijo 1,5% · "
-            f"estado {report['health']} · avisos confirmados {report['alerts_delivered']}\n")
+            f"estado {report['health']} · fuertes {report['alerts_delivered']} · observación {report['observations_delivered']}\n")
     print(text)
     if os.getenv("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
