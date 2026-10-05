@@ -101,6 +101,14 @@ def history(symbol, timeframe, bars, instrument):
         raise RuntimeError("Velas nativas con valores no finitos")
     if not (df[["open", "high", "low", "close"]] > 0).all().all() or (df.volume < 0).any():
         raise RuntimeError("Precios/volúmenes nativos inválidos")
+    # REST and Binance Vision can represent metadata columns with different
+    # JSON/CSV dtypes. Normalize them before parquet caching so a valid fallback
+    # never fails merely because one source encoded trade counts as text.
+    for column in ("quote_volume", "taker_base", "taker_quote", "ignore"):
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce").astype("float64")
+    if "trades" in df.columns:
+        df["trades"] = pd.to_numeric(df["trades"], errors="coerce").fillna(0).astype("int64")
     if (df.high < df[["open", "close", "low"]].max(axis=1)).any() or (df.low > df[["open", "close", "high"]].min(axis=1)).any():
         raise RuntimeError("OHLC nativo inconsistente")
     if len(df) > 1 and not (df.open_time.diff().dropna() == pd.Timedelta(timeframe)).all():
