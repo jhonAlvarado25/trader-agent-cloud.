@@ -6,6 +6,7 @@ from dashboard_v51 import fetch_feed, feed_age, order_for_capital, binance_rows,
 from profile_v5 import FIXED_RISK_PCT
 from monitor_status import format_local
 from realtime_v52 import realtime_url, fetch_realtime, order_for_realtime, MAX_TICK_AGE
+from binance_readonly import BinanceReadOnlyClient, BinanceReadOnlyError, balance_map, permission_is_read_only
 
 REALTIME = bool(realtime_url())
 
@@ -30,12 +31,128 @@ def cop(value):
     return "$" + f"{float(value):,.0f}".replace(",", ".") + " COP"
 
 
+def readonly_binance_snapshot():
+    """Read private account data only inside this Streamlit session.
+
+    Secrets are never written to GitHub, public feeds or logs.
+    """
+    try:
+        api_key = str(st.secrets["BINANCE_API_KEY"]).strip()
+        api_secret = str(st.secrets["BINANCE_API_SECRET"]).strip()
+    except Exception:
+        return {"configured": False, "connected": False, "error": None}
+
+    if not api_key or not api_secret:
+        return {"configured": False, "connected": False, "error": None}
+
+    try:
+        client = BinanceReadOnlyClient(api_key, api_secret)
+        permissions = client.permissions()
+        read_only = permission_is_read_only(permissions)
+        result = {
+            "configured": True,
+            "connected": True,
+            "read_only": read_only,
+            "permissions": permissions,
+            "balances": {},
+            "usdt_free": 0.0,
+            "usdt_locked": 0.0,
+            "error": None,
+        }
+        # Do not read balances if a risky permission is detected. The safety
+        # boundary is intentional: fix the key in Binance first.
+        if read_only:
+            balances = balance_map(client.account())
+            usdt = balances.get("USDT", {"free": 0.0, "locked": 0.0, "total": 0.0})
+            result.update(
+                balances=balances,
+                usdt_free=float(usdt["free"]),
+                usdt_locked=float(usdt["locked"]),
+                usdt_total=float(usdt["total"]),
+            )
+        return result
+    except BinanceReadOnlyError as exc:
+        return {
+            "configured": True,
+            "connected": False,
+            "error": str(exc),
+        }
+    except Exception as exc:
+        return {
+            "configured": True,
+            "connected": False,
+            "error": f"{type(exc).__name__}: {str(exc)[:220]}",
+        }
+
+
+def explain_binance_error(message):
+    text = str(message or "")
+    if "-2015" in text:
+        return (
+            "Binance rechazó la API Key, la restricción de IP o los permisos. "
+            "Revise que la clave siga activa, tenga Enable Reading y que cualquier restricción de IP permita a Streamlit."
+        )
+    if "-1022" in text:
+        return "La firma no coincide. Revise que API Key y Secret correspondan a la misma clave HMAC y que no tengan espacios adicionales."
+    if "-1021" in text:
+        return "Binance detectó una diferencia de tiempo. Recargue la app; si persiste, revisaremos la sincronización del cliente."
+    if "451" in text:
+        return (
+            "El servidor de Streamlit está siendo restringido por Binance desde su región cloud. "
+            "Las claves pueden estar correctas; este error es de acceso del servidor y no de su cuenta."
+        )
+    return "No fue posible validar la conexión. No cambie permisos de trading ni retiros para intentar resolverlo."
+
+
 with st.container(border=True):
     capital = st.number_input("Capital para invertir (COP)", min_value=10_000.0, max_value=1_000_000_000.0,
                               value=1_000_000.0, step=50_000.0, key="capital_cop",
                               help="Indique el capital libre que destina al agente; no reutilice dinero comprometido en otra operación.")
     st.metric("Riesgo fijo por operación · 1,5%", cop(capital*FIXED_RISK_PCT))
     st.caption("Es el presupuesto de pérdida modelada, no una pérdida máxima garantizada. El tamaño puede ser menor por costos, saldo o mínimos de Binance.")
+
+
+binance_private = readonly_binance_snapshot()
+with st.container(border=True):
+    st.subheader("Mi cuenta Binance · SOLO LECTURA")
+    if not binance_private.get("configured"):
+        st.info("Las credenciales todavía no están disponibles en Streamlit Secrets.")
+        st.caption("Se esperan BINANCE_API_KEY y BINANCE_API_SECRET. No las escriba en GitHub ni en el chat.")
+    elif not binance_private.get("connected"):
+        st.error("API configurada, pero Binance no confirmó la conexión.")
+        st.write(explain_binance_error(binance_private.get("error")))
+        with st.expander("Detalle técnico"):
+            st.code(binance_private.get("error") or "Sin detalle", language="text")
+    elif not binance_private.get("read_only"):
+        st.error("Conexión detectada, pero la API NO cumple la política de solo lectura.")
+        st.write("Desactive permisos de trading, Futures, Margin, Options, Portfolio Margin y retiros en Binance antes de usarla con el agente.")
+        with st.expander("Permisos detectados"):
+            p = binance_private.get("permissions", {})
+            st.json({
+                "Enable Reading": bool(p.get("enableReading", False)),
+                "Spot & Margin Trading": bool(p.get("enableSpotAndMarginTrading", False)),
+                "Futures": bool(p.get("enableFutures", False)),
+                "Margin": bool(p.get("enableMargin", False)),
+                "Withdrawals": bool(p.get("enableWithdrawals", False)),
+                "Vanilla Options": bool(p.get("enableVanillaOptions", False)),
+                "Portfolio Margin": bool(p.get("enablePortfolioMarginTrading", False)),
+            })
+    else:
+        st.success("CONECTADA · permisos verificados de SOLO LECTURA")
+        a, b = st.columns(2)
+        a.metric("USDT libre", f"{binance_private.get('usdt_free', 0):,.2f}")
+        b.metric("USDT bloqueado", f"{binance_private.get('usdt_locked', 0):,.2f}")
+        nonzero = binance_private.get("balances", {})
+        st.caption(f"Activos con saldo no nulo: {len(nonzero)}. El agente no puede comprar, vender, cancelar, transferir ni retirar fondos.")
+        with st.expander("Ver saldos no nulos"):
+            rows = [
+                {"Activo": asset, "Libre": values["free"], "Bloqueado": values["locked"], "Total": values["total"]}
+                for asset, values in sorted(nonzero.items())
+            ]
+            if rows:
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            else:
+                st.write("No se encontraron saldos Spot no nulos.")
 
 
 @st.cache_data(ttl=25, max_entries=2, show_spinner=False)
@@ -102,7 +219,24 @@ def automatic_screen():
             a.metric("Pérdida modelada al Stop", cop(order["net_loss_cop"]))
             b.metric("Ganancia modelada al objetivo", cop(order["net_gain_cop"]))
             fx = report["fx"]
-            st.caption(f"Conversión automática ESTIMADA: {fx['cop_per_usdt']:,.2f} COP/USDT (TRM + reserva 3%). No es una cotización P2P ni su costo real de compra. Confirme saldo USDT suficiente en Binance.")
+            st.caption(f"Conversión automática ESTIMADA: {fx['cop_per_usdt']:,.2f} COP/USDT (TRM + reserva 3%). No es una cotización P2P ni su costo real de compra.")
+            if binance_private.get("connected") and binance_private.get("read_only"):
+                free_usdt = float(binance_private.get("usdt_free", 0))
+                free_cop_est = free_usdt * float(fx["cop_per_usdt"])
+                required_usdt = float(st.session_state["capital_cop"]) / float(fx["cop_per_usdt"])
+                if free_usdt + 1e-9 < required_usdt:
+                    st.warning(
+                        f"Saldo Spot USDT libre aproximado: {free_usdt:,.2f} USDT (~{cop(free_cop_est)}). "
+                        f"Es inferior al capital indicado (~{required_usdt:,.2f} USDT). "
+                        "Reduzca el capital o disponga del saldo necesario antes de ejecutar."
+                    )
+                else:
+                    st.success(
+                        f"Saldo Spot USDT libre suficiente para el capital indicado: {free_usdt:,.2f} USDT "
+                        f"(~{cop(free_cop_est)} con la conversión estimada)."
+                    )
+            else:
+                st.caption("No se pudo confirmar el saldo privado de Binance; verifique manualmente el USDT disponible antes de ejecutar.")
             st.markdown("**Estos son los campos para Binance**")
             rows = binance_rows(order)
             st.dataframe(pd.DataFrame(rows, columns=["Campo", "Valor"]), hide_index=True, width="stretch",
