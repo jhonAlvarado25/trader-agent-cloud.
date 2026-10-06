@@ -52,8 +52,9 @@ def readonly_binance_snapshot():
         if not bridge_url or not bridge_token:
             return {"configured": True, "connected": False, "error": "Bridge URL/token incomplete"}
         parsed = urlparse(bridge_url)
-        if parsed.scheme != "https" or not parsed.netloc:
-            return {"configured": True, "connected": False, "error": "BINANCE_READONLY_BRIDGE_URL must use HTTPS"}
+        internal_http = parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "account", "binance-bridge"}
+        if (parsed.scheme != "https" and not internal_http) or not parsed.netloc:
+            return {"configured": True, "connected": False, "error": "El bridge remoto requiere HTTPS; HTTP solo se acepta dentro del host privado."}
         try:
             response = requests.get(
                 bridge_url.rstrip("/") + "/snapshot",
