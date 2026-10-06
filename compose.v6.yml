@@ -1,0 +1,69 @@
+services:
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.v6
+    restart: unless-stopped
+    init: true
+    environment:
+      TRADER_BIND: 0.0.0.0
+      TRADER_ACCESS_CONFIRMED: ${TRADER_ACCESS_CONFIRMED:-no}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    volumes:
+      - trader_state:/app/.state
+    ports:
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 45s
+
+  account:
+    build:
+      context: .
+      dockerfile: Dockerfile.v6
+    restart: unless-stopped
+    init: true
+    command: ["python", "binance_private_bridge.py"]
+    environment:
+      BINANCE_BRIDGE_BIND: 0.0.0.0
+      PORT: 8788
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+      BINANCE_BRIDGE_TOKEN: ${BINANCE_BRIDGE_TOKEN:-}
+    expose:
+      - "8788"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8788/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    profiles: ["private-account"]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.v6
+    restart: unless-stopped
+    init: true
+    command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
+    environment:
+      TRADER_REALTIME_URL: http://monitor:8787/snapshot
+      BINANCE_READONLY_BRIDGE_URL: http://account:8788
+      BINANCE_READONLY_BRIDGE_TOKEN: ${BINANCE_BRIDGE_TOKEN:-}
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      monitor:
+        condition: service_started
+      account:
+        condition: service_started
+        required: false
+    profiles: ["ui"]
+
+volumes:
+  trader_state:
