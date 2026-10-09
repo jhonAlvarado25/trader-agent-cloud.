@@ -27,14 +27,49 @@ jobs:
 
       - name: Syntax
         run: |
-          python -m py_compile             app.py config.py market.py futures_market.py futures_lab.py             engine.py indicators.py setups.py backtest.py risk.py             binance_readonly.py monitor.py monitor_status.py
+          python -m py_compile app.py config.py market.py futures_market.py futures_lab.py quant_math.py auto_decision_v42.py auto_monitor.py telegram_notify.py engine.py indicators.py setups.py backtest.py risk.py binance_readonly.py monitor.py monitor_status.py
 
       - name: Import smoke test
         run: |
           python - <<'PY'
           import futures_lab
           import futures_market
+          import quant_math
+          import auto_decision_v42
           import binance_readonly
           import engine
-          print("Trader Agent V4 imports OK")
+          print("Trader Agent V4 + Fibonacci/Quant imports OK")
+          PY
+
+      - name: Fibonacci and financial math smoke
+        run: |
+          python - <<'PY'
+          import numpy as np
+          import pandas as pd
+          from quant_math import add_fibonacci_features, performance_math
+
+          n = 260
+          close = np.linspace(100, 160, n) + 2*np.sin(np.arange(n)/7)
+          df = pd.DataFrame({
+              "open": close - 0.2,
+              "high": close + 1.0,
+              "low": close - 1.0,
+              "close": close,
+              "volume": np.full(n, 1000.0),
+              "atr": np.full(n, 2.0),
+          })
+          enriched = add_fibonacci_features(df)
+          required = {
+              "fib_long_confluence","fib_short_confluence",
+              "fib_long_nearest","fib_short_nearest","volatility_ratio_100"
+          }
+          assert required.issubset(enriched.columns)
+
+          trades = pd.DataFrame({"net_r":[2.0,-1.0,2.0,-1.0,2.0,1.0,-1.0,2.0]})
+          stats = performance_math(trades, span_years=1.0, risk_per_trade_pct=0.012)
+          assert stats["expectancy_r"] > 0
+          assert stats["profit_factor"] > 1
+          assert stats["psr_gt_zero"] > 0.5
+          assert stats["kelly_full"] > 0
+          print("Fibonacci/Quant smoke OK", stats)
           PY
