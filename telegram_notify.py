@@ -136,6 +136,14 @@ def _message(signal: dict) -> str:
         f"Dirección: {direction}",
         f"Temporalidad: {timeframe}",
         f"Evidencia: {evidence}",
+        f"Variante analítica: {signal.get('analysis_variant','BASE')}",
+        (
+            f"Fibonacci: confluencia {float(signal.get('fib_nearest'))*100:.1f}% · "
+            f"distancia {float(signal.get('fib_distance_atr')):.2f} ATR"
+            if signal.get("fib_confluence") and signal.get("fib_nearest") is not None
+            and signal.get("fib_distance_atr") is not None
+            else "Fibonacci: sin confluencia activa"
+        ),
         "",
         f"Entrada ref.: {_price(signal.get('entry'))} USDT",
         f"Stop Loss: {_price(signal.get('stop'))} USDT",
@@ -177,6 +185,26 @@ def _message(signal: dict) -> str:
         f"Trades TEST: {int(signal.get('trades_test', 0))}",
         f"Expectativa TEST: {float(signal.get('expectancy_r', 0)):+.3f}R",
         f"P(expectativa > 0): {float(signal.get('prob_positive', 0))*100:.1f}%",
+        (
+            f"Sharpe TEST aprox.: {float(signal.get('sharpe_test')):.2f}"
+            if signal.get("sharpe_test") is not None else "Sharpe TEST aprox.: -"
+        ),
+        (
+            f"Sortino TEST aprox.: {float(signal.get('sortino_test')):.2f}"
+            if signal.get("sortino_test") is not None else "Sortino TEST aprox.: -"
+        ),
+        (
+            f"PSR > 0: {float(signal.get('psr_test'))*100:.1f}%"
+            if signal.get("psr_test") is not None else "PSR > 0: -"
+        ),
+        (
+            f"Kelly conservador: {float(signal.get('kelly_conservative'))*100:.2f}%"
+            if signal.get("kelly_conservative") is not None else "Kelly conservador: -"
+        ),
+        (
+            f"Crecimiento geométrico proxy: {float(signal.get('geometric_growth_pct_year')):+.1f}%/año"
+            if signal.get("geometric_growth_pct_year") is not None else "Crecimiento geométrico proxy: -"
+        ),
         "",
         "VALIDACIÓN DE PRECIO AL ENVIAR",
         f"Precio actual: {_price(guidance.get('current'))} USDT",
