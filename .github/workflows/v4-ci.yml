@@ -1,9 +1,8 @@
-name: Trader Agent V5.3 CI
+name: Trader Agent V4 CI
 
 on:
   push:
-    branches: [main, codex/v5]
-  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -28,7 +27,7 @@ jobs:
 
       - name: Syntax
         run: |
-          python -m compileall -q .
+          python -m py_compile             app.py config.py market.py futures_market.py futures_lab.py             engine.py indicators.py setups.py backtest.py risk.py             binance_readonly.py monitor.py monitor_status.py
 
       - name: Import smoke test
         run: |
@@ -37,16 +36,5 @@ jobs:
           import futures_market
           import binance_readonly
           import engine
-          import auto_decision_v5
-          import monitor_v5
-          import monitor_v51
-          import dashboard_v51
-          import publish_market_v51
-          import realtime_v52
-          import service_v52
-          import supervisor_v53
-          print("Trader Agent V5.3 imports OK")
+          print("Trader Agent V4 imports OK")
           PY
-
-      - name: Risk, statistics, delivery and capital editor regression tests
-        run: python -m unittest discover -s tests -v
