@@ -1,82 +1,122 @@
-name: Trader Agent V5.3 Resilient Market
+name: Trader Agent V4.2 Unified Monitor
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'monitor_v51.py'
-      - 'supervisor_v53.py'
-      - 'market.py'
-      - 'market_v5.py'
-      - 'auto_decision_v5.py'
-      - 'dashboard_v51.py'
-      - 'publish_market_v51.py'
-      - 'fx_v51.py'
-      - '.github/workflows/auto-recommend-v4.yml'
   schedule:
-    # One hourly start is more reliable than asking GitHub to create 12 jobs/hour.
-    # Once started, the supervisor performs target 5-minute cycles inside the job.
-    - cron: "17 * * * *"
+    - cron: "7,22,37,52 * * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: trader-agent-v53-supervisor
+  group: trader-agent-v4-auto
   cancel-in-progress: false
 
 jobs:
-  resilient-monitor:
+  auto-recommend:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+    timeout-minutes: 30
 
-      - uses: actions/setup-python@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
+          cache: "pip"
 
-      - name: Restore state and historical cache
+      - name: Restore recommendation history
         uses: actions/cache/restore@v4
         with:
-          path: |
-            .state/v5_state.json
-            .state/v5_market
-          key: trader-v53-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .state/auto_alerts.json
+          key: trader-auto-state-${{ github.run_id }}
           restore-keys: |
-            trader-v53-state-
-            trader-v5-state-
+            trader-auto-state-
 
-      - name: Dependencies
+      - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Resilient market supervision
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          V51_PUBLISH_TOKEN: ${{ github.token }}
-          TRADER_SUPERVISOR_ROUNDS: ${{ github.event_name == 'schedule' && '11' || '1' }}
-        run: python supervisor_v53.py
+      - name: Evaluate automatic recommendations
+        run: python auto_monitor.py
 
-      - name: Persist acknowledged state
+      - name: Save recommendation history
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: |
-            .state/v5_state.json
-            .state/v5_market
-          key: trader-v53-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .state/auto_alerts.json
+          key: trader-auto-state-${{ github.run_id }}
 
-      - name: Export shadow audit checkpoint
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: v53-shadow-audit-${{ github.run_id }}
-          path: .state/v5_state.json
-          include-hidden-files: true
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Publish recommendation summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("auto_signals.json")
+          signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("# Trader Agent V4.2 — Recomendaciones automáticas\n\n")
+              f.write("Presupuesto por operación: **COP 1.000.000**  \n")
+              f.write("Riesgo máximo objetivo: **1,20% = COP 12.000**\n\n")
+
+              if not signals:
+                  f.write("No hay una nueva operación candidata en este ciclo.\n")
+              else:
+                  for s in signals:
+                      f.write(f"## {s['symbol']} — {s['instrument']} {s['direction']} {s['timeframe']}\n")
+                      f.write(f"- Evidencia: {s['evidence']}\n")
+                      f.write(f"- Entrada ref.: {s['entry']:.2f} USDT\n")
+                      f.write(f"- Stop: {s['stop']:.2f} USDT\n")
+                      f.write(f"- Take Profit: {s['take_profit']:.2f} USDT\n")
+                      if s.get("limit_sl") is not None:
+                          f.write(f"- Limit SL: {s['limit_sl']:.2f} USDT\n")
+                      f.write(f"- Nocional: {s['position_usdt']:.2f} USDT\n")
+                      f.write(f"- Cantidad: {s['qty']:.8f}\n")
+                      f.write(f"- Riesgo neto estimado: COP {s['net_loss_cop']:.0f}\n")
+                      f.write(f"- Beneficio neto estimado al TP: COP {s['net_gain_cop']:.0f}\n")
+                      if s["instrument"] == "FUTURES":
+                          f.write(f"- Margen: ISOLATED · {s['leverage']}x\n")
+                          f.write(f"- Margen aprox.: COP {s['margin_cop']:.0f}\n")
+                      f.write(f"- Expectativa TEST: {s['expectancy_r']:+.3f}R\n")
+                      f.write(f"- P(expectativa > 0): {s['prob_positive']*100:.1f}%\n\n")
+          PY
+
+      - name: Send Telegram alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python telegram_notify.py
+
+      - name: Record candidate notification
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("auto_signals.json")
+          signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+          if not signals:
+              print("Sin nueva operación candidata.")
+              raise SystemExit(0)
+
+          for s in signals:
+              extra = (
+                  f" | {s['leverage']}x ISOLATED"
+                  if s["instrument"] == "FUTURES"
+                  else ""
+              )
+              print(
+                  f"::notice title=Trader V4.2 - {s['symbol']}::"
+                  f"{s['instrument']} {s['direction']} {s['timeframe']}{extra} | "
+                  f"entrada {s['entry']:.4f} | TP {s['take_profit']:.4f} | "
+                  f"SL {s['stop']:.4f} | riesgo COP {s['net_loss_cop']:.0f}"
+              )
+
+          print("Nueva oportunidad enviada a Telegram.")
+          raise SystemExit(0)
+          PY
