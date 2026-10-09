@@ -46,7 +46,7 @@ h2,h3{font-size:1.1rem!important}
 """, unsafe_allow_html=True)
 
 st.title("Trader Agent Cloud V4.2")
-st.caption("Spot + Futures Lab · LONG/SHORT · 1H/2H/4H · Bootstrap · Monte Carlo · Solo lectura")
+st.caption("Spot + Futures Lab · LONG/SHORT · Fibonacci · PSR/Kelly/Sharpe/Sortino · Bootstrap · Monte Carlo · Solo lectura")
 
 with st.sidebar:
     symbol = st.selectbox("Activo", list(CFG.symbols), index=list(CFG.symbols).index(CFG.primary_symbol))
@@ -416,8 +416,18 @@ st.caption(f"Fuente de datos Futures: {get_futures_data_source()}")
 if auto.get("state") == "OPERACIÓN CANDIDATA":
     st.success(
         f"Instrumento sugerido por el modelo: **{auto['instrument']}** · "
-        f"{auto['direction']} · {auto['timeframe']} · evidencia {auto['evidence']}."
+        f"{auto['direction']} · {auto['timeframe']} · evidencia {auto['evidence']} · "
+        f"variante **{auto.get('analysis_variant','BASE')}**."
     )
+
+    fib_level = auto.get("fib_nearest")
+    fib_dist = auto.get("fib_distance_atr")
+    if auto.get("fib_confluence") and fib_level is not None and math.isfinite(float(fib_level)):
+        st.info(
+            f"Confluencia Fibonacci activa: **{float(fib_level)*100:.1f}%** · "
+            f"distancia **{float(fib_dist):.2f} ATR**. "
+            "Se usa como filtro adicional solo cuando mejora la muestra de VALIDACIÓN; no como señal independiente."
+        )
 
     ar1,ar2,ar3,ar4 = st.columns(4)
     ar1.metric("Entrada ref.", f"{auto['entry']:,.2f} USDT")
@@ -488,6 +498,37 @@ Reduce Only en SL/TP: Sí""",
             f"IC95% expectativa: **{stats.get('ci_low',0):+.3f}R a {stats.get('ci_high',0):+.3f}R** · "
             f"P(expectativa > 0): **{stats.get('prob_positive',0)*100:.1f}%**"
         )
+
+        qm1,qm2,qm3,qm4 = st.columns(4)
+        qm1.metric("Sharpe TEST", f"{stats.get('sharpe_test',0):.2f}")
+        qm2.metric("Sortino TEST", f"{stats.get('sortino_test',0):.2f}")
+        qm3.metric("PSR > 0", f"{stats.get('psr_test',0)*100:.1f}%")
+        qm4.metric("Kelly conservador", f"{stats.get('kelly_conservative_test',0)*100:.2f}%")
+
+        qn1,qn2,qn3 = st.columns(3)
+        calmar = stats.get("calmar_test",0)
+        qn1.metric("Calmar TEST", "∞" if math.isinf(float(calmar)) else f"{float(calmar):.2f}")
+        qn2.metric("Win-rate inferior 95%", f"{stats.get('wilson_win_low_test',0)*100:.1f}%")
+        qn3.metric("Crecimiento geométrico proxy", f"{stats.get('geometric_growth_pct_year_test',0):+.1f}%/año")
+
+        st.caption(
+            "Kelly, Sharpe, Sortino, Calmar y PSR se usan para medir robustez/riesgo de la evidencia histórica. "
+            "Kelly no aumenta automáticamente el riesgo configurado de 1,20%; el límite de riesgo permanece intacto."
+        )
+
+        comparison = stats.get("variant_comparison", [])
+        if comparison:
+            vdf = pd.DataFrame(comparison)
+            vdf = vdf.rename(columns={
+                "variant":"Variante",
+                "trades_val":"Trades VAL",
+                "expectancy_val_r":"Expectativa VAL (R)",
+                "pf_val":"PF VAL",
+                "psr_val":"PSR VAL",
+                "validation_score":"Score VAL",
+            })
+            st.markdown("**Comparación BASE vs Fibonacci usando VALIDACIÓN (no TEST para elegir variante)**")
+            st.dataframe(vdf, hide_index=True, use_container_width=True)
 elif auto.get("state") == "ESPERAR":
     st.warning(auto.get("reason","La señal existe, pero la entrada ya se alejó demasiado."))
 elif auto.get("state") == "PRE-SCAN":
