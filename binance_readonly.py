@@ -15,11 +15,6 @@ class BinanceReadOnlyError(RuntimeError):
     pass
 
 
-class BinanceLocationRestricted(BinanceReadOnlyError):
-    """The cloud host is not eligible to access Binance.com account APIs."""
-    pass
-
-
 class BinanceReadOnlyClient:
     """Cliente HMAC de solo lectura para Binance Spot.
 
@@ -46,7 +41,7 @@ class BinanceReadOnlyClient:
         except Exception:
             return int(time.time() * 1000)
 
-    def _signed_get(self, path: str, params: dict | None = None, base_url: str = BASE_URL):
+    def _signed_get(self, path: str, params: dict | None = None):
         payload = dict(params or {})
         payload["recvWindow"] = 5000
         payload["timestamp"] = self._server_time_ms()
@@ -58,9 +53,7 @@ class BinanceReadOnlyClient:
             hashlib.sha256,
         ).hexdigest()
 
-        if base_url not in {BASE_URL, "https://fapi.binance.com"}:
-            raise ValueError("Host de lectura no autorizado")
-        url = f"{base_url}{path}?{query}&signature={signature}"
+        url = f"{BASE_URL}{path}?{query}&signature={signature}"
         r = self.session.get(url, timeout=self.timeout)
         if not r.ok:
             try:
@@ -70,11 +63,7 @@ class BinanceReadOnlyClient:
             except Exception:
                 code = r.status_code
                 msg = r.text[:250]
-            message = f"Binance API {code}: {msg}"
-            lowered = str(msg).lower()
-            if r.status_code == 451 or "restricted location" in lowered or "eligibility" in lowered:
-                raise BinanceLocationRestricted(message)
-            raise BinanceReadOnlyError(message)
+            raise BinanceReadOnlyError(f"Binance API {code}: {msg}")
         return r.json()
 
     def permissions(self) -> dict:
@@ -92,26 +81,6 @@ class BinanceReadOnlyClient:
             "symbol": symbol,
             "limit": limit,
         })
-
-    def futures_account(self) -> dict:
-        return self._signed_get("/fapi/v3/account", base_url="https://fapi.binance.com")
-
-    def futures_positions(self) -> list[dict]:
-        return self._signed_get("/fapi/v3/positionRisk", base_url="https://fapi.binance.com")
-
-    def futures_income(self, days: int = 30) -> list[dict]:
-        """Account PnL/commission/funding events, NOT reconstructed position trades."""
-        now_ms = self._server_time_ms()
-        start = now_ms - max(1, min(int(days), 90))*24*60*60*1000
-        rows = []
-        for page in range(1, 101):
-            batch = self._signed_get("/fapi/v1/income", {
-                "startTime": start, "endTime": now_ms, "limit": 1000, "page": page,
-            }, base_url="https://fapi.binance.com")
-            rows.extend(batch)
-            if len(batch) < 1000:
-                return rows
-        raise BinanceReadOnlyError("Historial extenso: rango no reconstruido completamente")
 
 
 def balance_map(account: dict) -> dict[str, dict]:
