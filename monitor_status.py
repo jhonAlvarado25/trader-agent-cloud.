@@ -16,11 +16,11 @@ def next_4h_close(now_utc: pd.Timestamp | None = None) -> pd.Timestamp:
 def next_monitor_run(now_utc: pd.Timestamp | None = None) -> pd.Timestamp:
     now = now_utc or pd.Timestamp.now(tz="UTC")
     base = now.floor("h")
-    for minute in range(2, 60, 5):
+    for minute in (7, 22, 37, 52):
         candidate = base + pd.Timedelta(minutes=minute)
         if candidate > now:
             return candidate
-    return base + pd.Timedelta(hours=1, minutes=2)
+    return base + pd.Timedelta(hours=1, minutes=7)
 
 
 def format_local(ts) -> str:
@@ -35,7 +35,7 @@ def get_last_scheduled_run(timeout: int = 8) -> dict | None:
     params = {"event": "schedule", "per_page": 1}
     headers = {
         "Accept": "application/vnd.github+json",
-        "User-Agent": "TraderAgentCloudV5",
+        "User-Agent": "TraderAgentCloudV4.2",
     }
     try:
         r = requests.get(url, params=params, headers=headers, timeout=timeout)
