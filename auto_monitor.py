@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -63,6 +64,13 @@ def make_signal(symbol: str) -> dict | None:
     stats = rec.get("stats", {})
     signal_time = rec.get("signal_time") or pd.Timestamp.now(tz="UTC").floor("1h").isoformat()
 
+    def finite_or_none(value):
+        try:
+            x=float(value)
+            return x if math.isfinite(x) else None
+        except Exception:
+            return None
+
     payload = {
         "symbol": symbol,
         "state": rec["state"],
@@ -98,6 +106,21 @@ def make_signal(symbol: str) -> dict | None:
         "profit_factor": stats.get("pf_test"),
         "atr": float(rec.get("atr", 0.0)),
         "entry_drift_atr": float(rec.get("entry_drift_atr", 0.0)),
+        "analysis_variant": rec.get("analysis_variant", "BASE"),
+        "fib_confluence": bool(rec.get("fib_confluence", False)),
+        "fib_nearest": finite_or_none(rec.get("fib_nearest")),
+        "fib_distance_atr": finite_or_none(rec.get("fib_distance_atr")),
+        "fib_extension_1272": finite_or_none(rec.get("fib_extension_1272")),
+        "fib_extension_1618": finite_or_none(rec.get("fib_extension_1618")),
+        "volatility_ratio": finite_or_none(rec.get("volatility_ratio")),
+        "sharpe_test": finite_or_none(stats.get("sharpe_test")),
+        "sortino_test": finite_or_none(stats.get("sortino_test")),
+        "calmar_test": finite_or_none(stats.get("calmar_test")),
+        "psr_test": finite_or_none(stats.get("psr_test")),
+        "kelly_conservative": finite_or_none(stats.get("kelly_conservative_test")),
+        "kelly_quarter_conservative": finite_or_none(stats.get("kelly_quarter_conservative_test")),
+        "wilson_win_low": finite_or_none(stats.get("wilson_win_low_test")),
+        "geometric_growth_pct_year": finite_or_none(stats.get("geometric_growth_pct_year_test")),
     }
 
     payload["key"] = "|".join([
