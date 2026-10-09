@@ -8,6 +8,7 @@ import pandas as pd
 
 from futures_market import get_futures_klines, get_funding_history
 from market import get_klines
+from quant_math import add_fibonacci_features, performance_math
 
 
 TIMEFRAME_HOURS = {"30m": 0.5, "1h": 1, "2h": 2, "4h": 4}
@@ -56,6 +57,7 @@ def enrich_lab(df: pd.DataFrame) -> pd.DataFrame:
     out["swing_low_10"] = out["low"].rolling(10).min()
     out["swing_high_10"] = out["high"].rolling(10).max()
     out["dist_ema20_atr"] = (out["close"] - out["ema20"]).abs() / out["atr"]
+    out = add_fibonacci_features(out)
 
     out["long_signal"] = (
         (out["close"] > out["ema200"]) &
@@ -314,6 +316,10 @@ def summarize_config(
     win_test = float(np.mean(r_test > 0)) if len(r_test) else 0.0
     dd_test = _max_drawdown_r(r_test)
 
+    val_years = max((cut80-cut60).total_seconds()/(365.25*24*3600), 0.01)
+    val_math = performance_math(val, val_years, risk_per_trade_pct)
+    test_math = performance_math(test, test_years, risk_per_trade_pct)
+
     evidence = "INSUFICIENTE"
     if (
         len(test) >= 200 and
@@ -351,6 +357,21 @@ def summarize_config(
         "avg_fee_r": float(test["fee_r"].mean()) if len(test) else 0.0,
         "avg_funding_r": float(test["funding_r"].mean()) if len(test) else 0.0,
         "net_r_test": float(r_test.sum()) if len(r_test) else 0.0,
+        "expectancy_val_r": float(val_math["expectancy_r"]),
+        "pf_val": float(val_math["profit_factor"]),
+        "psr_val": float(val_math["psr_gt_zero"]),
+        "sharpe_val": float(val_math["sharpe_trade_ann"]),
+        "sortino_val": float(val_math["sortino_trade_ann"]),
+        "calmar_val": float(val_math["calmar_r"]),
+        "sharpe_test": float(test_math["sharpe_trade_ann"]),
+        "sortino_test": float(test_math["sortino_trade_ann"]),
+        "calmar_test": float(test_math["calmar_r"]),
+        "psr_test": float(test_math["psr_gt_zero"]),
+        "kelly_full_test": float(test_math["kelly_full"]),
+        "kelly_conservative_test": float(test_math["kelly_conservative"]),
+        "kelly_quarter_conservative_test": float(test_math["kelly_quarter_conservative"]),
+        "wilson_win_low_test": float(test_math["wilson_win_low"]),
+        "geometric_growth_pct_year_test": float(test_math["geometric_growth_pct_year"]),
         "evidence": evidence,
         **bs,
     }
