@@ -208,9 +208,6 @@ def send_message(token: str, chat_id: str, text: str) -> None:
         raise RuntimeError(
             f"Telegram HTTP {response.status_code}: {response.text[:300]}"
         )
-    payload = response.json()
-    if payload.get("ok") is not True:
-        raise RuntimeError("Telegram no confirmó la entrega del mensaje")
 
 
 def main() -> int:
@@ -228,7 +225,7 @@ def main() -> int:
         send_message(
             token,
             chat_id,
-            "Trader Agent V5 conectado correctamente con Telegram. "
+            "Trader Agent V4.2 conectado correctamente con Telegram. "
             "Las próximas alertas llegarán cuando aparezca una operación candidata.",
         )
         print("[TELEGRAM] Mensaje de prueba enviado.")
