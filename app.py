@@ -672,7 +672,7 @@ st.header("FUTURES LAB V4.2")
 st.caption(
     "Laboratorio histórico bajo demanda. Compara Spot LONG contra USDⓈ-M Futures LONG/SHORT "
     "en 1H, 2H y 4H. Incluye comisiones, slippage, funding histórico, división temporal 60/20/20, "
-    "bootstrap y Monte Carlo. No ejecuta órdenes."
+    "bootstrap, Monte Carlo, Fibonacci como confluencia y métricas Sharpe/Sortino/Calmar/PSR/Kelly. No ejecuta órdenes."
 )
 
 with st.expander("Configurar análisis V4.0", expanded=False):
@@ -765,13 +765,19 @@ if isinstance(lab_results, pd.DataFrame) and not lab_results.empty:
         "R/año": show["r_per_year_test"].map(lambda x:f"{x:+.1f}"),
         "Retorno proxy/año": show["return_proxy_pct_year_at_risk"].map(lambda x:f"{x:+.1f}%"),
         "DD TEST": show["max_dd_test_r"].map(lambda x:f"{x:.1f}R"),
+        "Sharpe": show["sharpe_test"].map(lambda x:f"{x:.2f}"),
+        "Sortino": show["sortino_test"].map(lambda x:f"{x:.2f}"),
+        "PSR>0": show["psr_test"].map(lambda x:f"{x*100:.1f}%"),
+        "Kelly cons.": show["kelly_conservative_test"].map(lambda x:f"{x*100:.2f}%"),
+        "Geom./año": show["geometric_growth_pct_year_test"].map(lambda x:f"{x:+.1f}%"),
         "Costo fee": show["avg_fee_r"].map(lambda x:f"{x:.3f}R"),
         "Funding": show["avg_funding_r"].map(lambda x:f"{x:+.3f}R"),
     })
     st.dataframe(table, hide_index=True, use_container_width=True)
 
     st.caption(
-        "Retorno proxy/año = R/año × riesgo configurado por operación. No incluye compounding y no es una proyección garantizada."
+        "Retorno proxy/año = R/año × riesgo configurado. Geom./año usa crecimiento compuesto sobre la secuencia TEST "
+        "al riesgo configurado. Ambas son métricas históricas, no proyecciones garantizadas."
     )
 
     choices = []
