@@ -34,20 +34,11 @@ def _request(path: str, params: dict, timeout: int = 12):
             if r.status_code == 200:
                 _last_working_base = base
                 return r.json()
-            # Public market-data hosts published by Binance are redundant read-only
-            # endpoints. A cloud edge can reject one host while another official
-            # market-data host remains available. This failover never touches
-            # private/account/trading endpoints.
-            if r.status_code == 451:
-                errors.append(f"{base}: HTTP 451")
-                continue
-            if r.status_code in (401, 403, 418, 429):
-                raise RuntimeError(f"Binance Spot bloqueado: HTTP {r.status_code}")
             errors.append(f"{base}: HTTP {r.status_code}")
         except requests.RequestException as exc:
             errors.append(f"{base}: {type(exc).__name__}")
 
-    raise RuntimeError("No fue posible consultar Binance Spot público. " + " | ".join(errors))
+    raise RuntimeError("No fue posible consultar Binance. " + " | ".join(errors))
 
 def get_active_endpoint() -> str:
     return _last_working_base or "Pendiente"
