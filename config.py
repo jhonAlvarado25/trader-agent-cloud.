@@ -83,6 +83,11 @@ class StrategyConfig:
     auto_balanced_min_prob_positive: float = 0.75
     auto_balanced_max_candidates_per_symbol: int = 2
 
+    # Fibonacci V4.2 Quant: confluencia opcional, seleccionada solo con VALIDACIÓN.
+    fib_min_validation_trades: int = 20
+    fib_min_validation_score_gain: float = 0.03
+    fib_min_validation_expectancy_gain_r: float = 0.02
+
     # Ejecución de alertas: evita perseguir el precio.
     alert_enter_now_atr: float = 0.15
     alert_limit_max_atr: float = 0.50
