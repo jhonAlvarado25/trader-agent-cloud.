@@ -148,7 +148,6 @@ def main() -> int:
                 print(f"[SKIP] {symbol}: señal ya notificada")
                 continue
             new_signals.append(signal)
-            sent.add(signal["key"])
             print(
                 f"[NEW] {symbol} {signal['instrument']} {signal['direction']} "
                 f"{signal['timeframe']} | riesgo COP {signal['risk_budget_cop']:.0f}"
@@ -157,8 +156,8 @@ def main() -> int:
             errors += 1
             print(f"[ERROR] {symbol}: {type(exc).__name__}: {exc}")
 
-    state["sent_keys"] = list(sent)
-    save_state(state)
+    # No marcamos señales como enviadas aquí. Se confirman únicamente después
+    # de que Telegram responde OK, para no perder una oportunidad si Telegram falla.
     OUTPUT.write_text(
         json.dumps(new_signals, ensure_ascii=False, indent=2),
         encoding="utf-8",
