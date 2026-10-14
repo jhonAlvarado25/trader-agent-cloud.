@@ -41,13 +41,6 @@ jobs:
       - name: Evaluate automatic recommendations
         run: python auto_monitor.py
 
-      - name: Save recommendation history
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: .state/auto_alerts.json
-          key: trader-auto-state-${{ github.run_id }}
-
       - name: Publish recommendation summary
         run: |
           python - <<'PY'
@@ -90,6 +83,16 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python telegram_notify.py
+
+      - name: Acknowledge delivered signals
+        run: python ack_signals.py
+
+      - name: Save recommendation history
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state/auto_alerts.json
+          key: trader-auto-state-${{ github.run_id }}
 
       - name: Record candidate notification
         run: |
