@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -223,19 +224,30 @@ def _message(signal: dict) -> str:
 
 def send_message(token: str, chat_id: str, text: str) -> None:
     url = f"{TELEGRAM_API}/bot{token}/sendMessage"
-    response = requests.post(
-        url,
-        json={
-            "chat_id": chat_id,
-            "text": text,
-            "disable_web_page_preview": True,
-        },
-        timeout=20,
-    )
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"Telegram HTTP {response.status_code}: {response.text[:300]}"
-        )
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            response = requests.post(url, json=payload, timeout=(10, 30))
+            if response.status_code == 200:
+                return
+            last_error = RuntimeError(
+                f"Telegram HTTP {response.status_code}: {response.text[:300]}"
+            )
+            if response.status_code < 500 and response.status_code != 429:
+                raise last_error
+        except requests.RequestException as exc:
+            last_error = exc
+
+        if attempt < 3:
+            time.sleep(2 ** attempt)
+
+    raise RuntimeError(f"Telegram no respondió después de 3 intentos: {last_error}")
 
 
 def main() -> int:
