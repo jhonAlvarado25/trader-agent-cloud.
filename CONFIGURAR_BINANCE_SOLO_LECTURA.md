@@ -1,69 +1,109 @@
-# Conectar Binance en modo solo lectura
+# Conectar Binance en modo solo lectura — Trader Agent V4.2
 
-Trader Agent V3.3 puede leer tu cuenta Spot de Binance sin capacidad de enviar órdenes.
+## Objetivo
 
-## 1. Crear una API de solo lectura en Binance
+La integración privada de Binance sirve únicamente para mostrar saldos Spot,
+órdenes abiertas y operaciones recientes dentro del panel Streamlit.
 
-En Binance:
+El agente NO ejecuta órdenes y el módulo `binance_readonly.py` implementa
+exclusivamente solicitudes GET.
 
-1. Abre **Perfil / Cuenta → Gestión de API**.
-2. Crea una nueva API, por ejemplo: `Trader Agent Read Only`.
-3. Usa una clave generada por el sistema (HMAC) para esta integración.
-4. Mantén habilitado únicamente **Enable Reading / Habilitar lectura**.
-5. **NO habilites Spot & Margin Trading**.
-6. **NO habilites Futures**.
-7. **NO habilites Margin**.
-8. **NO habilites Withdrawals / Retiros**.
+## 1. Configuración correcta en Binance
 
-Trader Agent verifica esos permisos y mostrará una advertencia si detecta permisos de escritura.
+Crea o conserva una API HMAC dedicada al Trader Agent.
 
-## 2. No pongas las claves en GitHub
+Debe quedar:
 
-Nunca escribas la API Key o API Secret dentro de `app.py`, `config.py`, README ni ningún archivo del repositorio.
+- Enable Reading: ACTIVADO.
+- Spot & Margin Trading: DESACTIVADO.
+- Futures: DESACTIVADO.
+- Margin: DESACTIVADO.
+- Withdrawals: DESACTIVADO.
+- Options / Portfolio Margin / FIX Trade: DESACTIVADO.
 
-Tampoco las pegues en un chat.
+No reutilices una API con permisos de trading.
 
-## 3. Streamlit Community Cloud
+## 2. Streamlit Secrets
 
-En la configuración de tu aplicación Streamlit abre **Secrets** y añade:
+Guarda únicamente en Streamlit Community Cloud:
 
 ```toml
 BINANCE_API_KEY = "TU_API_KEY"
 BINANCE_API_SECRET = "TU_API_SECRET"
 ```
 
-Guarda. Streamlit reiniciará la aplicación.
+No pongas estas credenciales en GitHub, archivos del repositorio ni chats.
 
-Cuando abras Trader Agent aparecerá la sección **Mi cuenta Binance — SOLO LECTURA**.
+## 3. Cómo se conecta V4.2
 
-## 4. GitHub Actions para el monitor automático
+El cliente prueba los endpoints REST oficiales publicados por Binance:
 
-Si quieres que el monitor revise tu posición aunque la página de Streamlit esté cerrada:
+- https://api.binance.com
+- https://api-gcp.binance.com
+- https://api1.binance.com
+- https://api2.binance.com
+- https://api3.binance.com
+- https://api4.binance.com
 
-Repositorio GitHub → **Settings → Secrets and variables → Actions → New repository secret**
+Primero valida conectividad pública y después prueba un endpoint USER_DATA
+firmado. Conserva el primer host oficial que responda correctamente.
 
-Crea dos secretos:
+La firma sigue siendo HMAC SHA-256 y el `recvWindow` se mantiene en 5000 ms.
 
-- `BINANCE_API_KEY`
-- `BINANCE_API_SECRET`
+## 4. Diagnóstico en la aplicación
 
-El workflow los entrega al proceso como variables de entorno. El valor de los secretos no se imprime en los logs.
+En **Mi cuenta Binance — SOLO LECTURA** pulsa:
 
-## 5. Qué podrá leer V3.3
+**Probar conexión Binance ahora**
+
+Resultados posibles:
+
+### Conectado a Binance con permisos verificados de SOLO LECTURA
+
+La integración está funcionando y la app mostrará el endpoint oficial activo,
+saldo USDT, saldo del activo seleccionado, órdenes y últimas operaciones.
+
+### CLAVES GUARDADAS · BINANCE BLOQUEA LA REGIÓN/IP DEL SERVIDOR STREAMLIT
+
+Las claves existen, pero Binance rechazó la IP/región del servidor de Streamlit.
+Esto no demuestra que la API Key o el Secret estén dañados.
+
+No se deben usar VPN, proxies ni mecanismos para evadir las restricciones
+geográficas de Binance.
+
+### Binance rechazó las credenciales o la configuración de la API
+
+Revisa que la API siga activa, que la clave y el secret correspondan entre sí
+y que las restricciones configuradas en Binance permitan la IP desde la que se
+está conectando el servicio.
+
+## 5. Restricción por IP
+
+Streamlit Community Cloud no debe asumirse como un servidor con IP pública fija
+para una allowlist personal.
+
+Si la API está configurada con una lista de IP y esa lista no coincide con la
+infraestructura real de Streamlit, las solicitudes privadas pueden ser
+rechazadas.
+
+No desactives controles de seguridad únicamente para lograr una conexión.
+
+## 6. Qué datos puede leer
 
 - Saldos Spot no nulos.
-- Saldo libre y bloqueado.
-- Órdenes abiertas por activo.
-- Limit TP real.
-- Stop / Trigger SL real.
-- Limit SL real.
-- Cantidad protegida.
-- Últimos fills/operaciones del activo.
-- Permisos de la API para verificar que sea de solo lectura.
+- USDT libre.
+- Saldo libre y bloqueado del activo seleccionado.
+- Órdenes abiertas.
+- TP/SL detectables en órdenes SELL.
+- Últimos fills/operaciones del par.
+- Permisos de la API cuando el endpoint de restricciones está disponible.
 
-## 6. Qué NO puede hacer
+Los datos privados se cachean 60 segundos para reducir solicitudes y evitar
+rate limits.
 
-El módulo `binance_readonly.py` implementa exclusivamente solicitudes GET. No contiene endpoints para:
+## 7. Qué NO puede hacer
+
+El módulo no implementa llamadas POST, PUT o DELETE para:
 
 - Comprar.
 - Vender.
@@ -72,3 +112,9 @@ El módulo `binance_readonly.py` implementa exclusivamente solicitudes GET. No c
 - Retirar fondos.
 
 La ejecución continúa siendo manual en Binance.
+
+## 8. Monitor automático
+
+El monitor V4.2 de GitHub Actions utiliza datos públicos de mercado para buscar
+oportunidades. Las credenciales privadas de Binance no son necesarias para
+ese análisis ni para Telegram.
