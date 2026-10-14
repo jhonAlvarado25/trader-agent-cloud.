@@ -27,7 +27,7 @@ jobs:
 
       - name: Syntax
         run: |
-          python -m py_compile app.py config.py market.py futures_market.py futures_lab.py quant_math.py auto_decision_v42.py auto_monitor.py telegram_notify.py engine.py indicators.py setups.py backtest.py risk.py binance_readonly.py monitor.py monitor_status.py
+          python -m py_compile app.py config.py market.py futures_market.py futures_lab.py quant_math.py auto_decision_v42.py auto_monitor.py ack_signals.py telegram_notify.py engine.py indicators.py setups.py backtest.py risk.py binance_readonly.py monitor.py monitor_status.py
 
       - name: Import smoke test
         run: |
