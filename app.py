@@ -142,14 +142,25 @@ def cached_binance_snapshot(sym: str):
 
     client = BinanceReadOnlyClient(api_key, api_secret)
     connectivity = client.public_connectivity()
-    permissions = client.permissions()
+
+    # Primero validamos un USER_DATA firmado del Spot API. La consulta SAPI
+    # de permisos se trata aparte porque puede tener disponibilidad distinta.
     account = client.account()
+
+    permissions = None
+    permissions_error = None
+    try:
+        permissions = client.permissions()
+    except BinanceReadOnlyError as exc:
+        permissions_error = f"{type(exc).__name__}: {exc}"
+
     orders = client.open_orders(sym)
     trades = client.trades(sym, 50)
     return {
         "connectivity": connectivity,
         "active_base_url": client.active_base_url,
         "permissions": permissions,
+        "permissions_error": permissions_error,
         "account": account,
         "orders": orders,
         "trades": trades,
@@ -582,8 +593,9 @@ else:
 
     try:
         snapshot = cached_binance_snapshot(symbol)
-        permissions = snapshot["permissions"]
-        readonly_ok = permission_is_read_only(permissions)
+        permissions = snapshot.get("permissions")
+        permissions_error = snapshot.get("permissions_error")
+        readonly_ok = permission_is_read_only(permissions) if isinstance(permissions, dict) else None
         account = snapshot["account"]
         orders = snapshot["orders"]
         trade_rows = snapshot["trades"]
@@ -594,14 +606,19 @@ else:
         usdt_bal = balances.get("USDT", {"free":0.0, "locked":0.0, "total":0.0})
         protection = summarize_protection(orders)
 
-        if readonly_ok:
+        if readonly_ok is True:
             st.success("Conectado a Binance con permisos verificados de SOLO LECTURA.")
-            st.caption(f"Endpoint privado activo: {active_base} · actualización cacheada por 60 segundos.")
-        else:
+        elif readonly_ok is False:
             st.error(
-                "La API respondió, pero detecté permisos distintos de solo lectura. "
-                "Desactiva trading, futuros, margen y retiros en Binance."
+                "La cuenta responde, pero la API Key tiene uno o más permisos de escritura habilitados. "
+                "Desactiva trading, Futures, Margin y retiros en Binance."
             )
+        else:
+            st.warning(
+                "Conectado a Binance en modo GET, pero Binance no permitió verificar el endpoint de permisos en este intento. "
+                "Mantén la API Key configurada manualmente como solo lectura."
+            )
+        st.caption(f"Endpoint privado activo: {active_base} · actualización cacheada por 60 segundos.")
 
         ac1,ac2 = st.columns(2)
         ac1.metric(f"{base_asset} total", f"{base_bal['total']:.8f}")
@@ -610,15 +627,19 @@ else:
         ac3.metric(f"{base_asset} libre", f"{base_bal['free']:.8f}")
         ac4.metric(f"{base_asset} bloqueado", f"{base_bal['locked']:.8f}")
 
-        st.caption(
-            "Permisos: lectura={} · Spot/Margin trading={} · Futures={} · Margin={} · Retiros={}".format(
-                "Sí" if permissions.get("enableReading") else "No",
-                "Sí" if permissions.get("enableSpotAndMarginTrading") else "No",
-                "Sí" if permissions.get("enableFutures") else "No",
-                "Sí" if permissions.get("enableMargin") else "No",
-                "Sí" if permissions.get("enableWithdrawals") else "No",
+        if isinstance(permissions, dict):
+            st.caption(
+                "Permisos: lectura={} · Spot/Margin trading={} · Futures={} · Margin={} · Retiros={}".format(
+                    "Sí" if permissions.get("enableReading") else "No",
+                    "Sí" if permissions.get("enableSpotAndMarginTrading") else "No",
+                    "Sí" if permissions.get("enableFutures") else "No",
+                    "Sí" if permissions.get("enableMargin") else "No",
+                    "Sí" if permissions.get("enableWithdrawals") else "No",
+                )
             )
-        )
+        elif permissions_error:
+            with st.expander("Verificación de permisos no disponible", expanded=False):
+                st.code(permissions_error, language="text")
 
         if protection:
             st.markdown("**Protección real detectada en Binance**")
@@ -955,4 +976,4 @@ with st.expander("Monitor V4.2 / alertas al iPhone", expanded=False):
     st.write("Si aparece una señal nueva VIGILAR o SETUP VÁLIDO, el workflow se marca como alerta para que GitHub pueda notificarte.")
     st.write("Las operaciones siguen siendo manuales en Binance; V4.0 no contiene funciones para abrir Futures ni retirar fondos.")
 
-st.caption(f"Fuente activa: {get_active_endpoint()} · V4.2 es solo análisis; no accede ni opera tu cuenta.")
+st.caption(f"Fuente activa: {get_active_endpoint()} · V4.2 no ejecuta órdenes. La sección Binance, si conecta, usa exclusivamente consultas GET de solo lectura.")
