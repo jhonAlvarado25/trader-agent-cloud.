@@ -14,6 +14,9 @@ from monitor_status import get_last_scheduled_run, next_monitor_run, format_loca
 from binance_readonly import (
     BinanceReadOnlyClient,
     BinanceReadOnlyError,
+    BinanceLocationRestricted,
+    BinanceAuthenticationError,
+    BinanceRateLimitError,
     balance_map,
     base_asset_from_symbol,
     summarize_protection,
@@ -128,6 +131,29 @@ def _readonly_client():
     if not api_key or not api_secret:
         return None
     return BinanceReadOnlyClient(api_key, api_secret)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_binance_snapshot(sym: str):
+    api_key = _streamlit_secret("BINANCE_API_KEY")
+    api_secret = _streamlit_secret("BINANCE_API_SECRET")
+    if not api_key or not api_secret:
+        return None
+
+    client = BinanceReadOnlyClient(api_key, api_secret)
+    connectivity = client.public_connectivity()
+    permissions = client.permissions()
+    account = client.account()
+    orders = client.open_orders(sym)
+    trades = client.trades(sym, 50)
+    return {
+        "connectivity": connectivity,
+        "active_base_url": client.active_base_url,
+        "permissions": permissions,
+        "account": account,
+        "orders": orders,
+        "trades": trades,
+    }
 
 
 @st.cache_data(ttl=21600, show_spinner=False)
@@ -546,29 +572,35 @@ ro_client = _readonly_client()
 
 if ro_client is None:
     st.info(
-        "La integración está preparada, pero todavía faltan los secretos de Binance. "
-        "Añade BINANCE_API_KEY y BINANCE_API_SECRET en Streamlit Secrets. "
+        "La integración está preparada, pero faltan BINANCE_API_KEY y BINANCE_API_SECRET en Streamlit Secrets. "
         "No pegues las credenciales en GitHub ni en el chat."
     )
     st.caption("Consulta CONFIGURAR_BINANCE_SOLO_LECTURA.md en el repositorio.")
 else:
+    if st.button("Probar conexión Binance ahora", use_container_width=True, key="binance_connect_test"):
+        cached_binance_snapshot.clear()
+
     try:
-        permissions = ro_client.permissions()
+        snapshot = cached_binance_snapshot(symbol)
+        permissions = snapshot["permissions"]
         readonly_ok = permission_is_read_only(permissions)
-        account = ro_client.account()
+        account = snapshot["account"]
+        orders = snapshot["orders"]
+        trade_rows = snapshot["trades"]
+        active_base = snapshot.get("active_base_url") or "-"
         balances = balance_map(account)
         base_asset = base_asset_from_symbol(symbol)
         base_bal = balances.get(base_asset, {"free":0.0, "locked":0.0, "total":0.0})
         usdt_bal = balances.get("USDT", {"free":0.0, "locked":0.0, "total":0.0})
-        orders = ro_client.open_orders(symbol)
         protection = summarize_protection(orders)
 
         if readonly_ok:
             st.success("Conectado a Binance con permisos verificados de SOLO LECTURA.")
+            st.caption(f"Endpoint privado activo: {active_base} · actualización cacheada por 60 segundos.")
         else:
             st.error(
-                "La API está conectada, pero detecté uno o más permisos distintos de solo lectura. "
-                "Desactiva trading, futuros, margen y retiros en Binance antes de continuar."
+                "La API respondió, pero detecté permisos distintos de solo lectura. "
+                "Desactiva trading, futuros, margen y retiros en Binance."
             )
 
         ac1,ac2 = st.columns(2)
@@ -640,32 +672,59 @@ else:
                 st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
         with st.expander("Últimas operaciones reales", expanded=False):
-            try:
-                trade_rows = ro_client.trades(symbol, 50)
-                if trade_rows:
-                    td = []
-                    for t in trade_rows[-20:][::-1]:
-                        tm = pd.to_datetime(int(t["time"]), unit="ms", utc=True).tz_convert("America/Bogota")
-                        td.append({
-                            "Fecha Colombia": tm.strftime("%d/%m/%Y %H:%M"),
-                            "Lado": "COMPRA" if t.get("isBuyer") else "VENTA",
-                            "Precio": float(t.get("price",0) or 0),
-                            "Cantidad": float(t.get("qty",0) or 0),
-                            "Total": float(t.get("quoteQty",0) or 0),
-                            "Comisión": float(t.get("commission",0) or 0),
-                            "Activo comisión": t.get("commissionAsset"),
-                        })
-                    st.dataframe(pd.DataFrame(td), hide_index=True, use_container_width=True)
-                else:
-                    st.write("No hay operaciones recientes para este par.")
-            except Exception as trade_exc:
-                st.warning(f"No pude consultar el historial de trades: {trade_exc}")
+            if trade_rows:
+                td = []
+                for t in trade_rows[-20:][::-1]:
+                    tm = pd.to_datetime(int(t["time"]), unit="ms", utc=True).tz_convert("America/Bogota")
+                    td.append({
+                        "Fecha Colombia": tm.strftime("%d/%m/%Y %H:%M"),
+                        "Lado": "COMPRA" if t.get("isBuyer") else "VENTA",
+                        "Precio": float(t.get("price",0) or 0),
+                        "Cantidad": float(t.get("qty",0) or 0),
+                        "Total": float(t.get("quoteQty",0) or 0),
+                        "Comisión": float(t.get("commission",0) or 0),
+                        "Activo comisión": t.get("commissionAsset"),
+                    })
+                st.dataframe(pd.DataFrame(td), hide_index=True, use_container_width=True)
+            else:
+                st.write("No hay operaciones recientes para este par.")
+
+    except BinanceLocationRestricted as exc:
+        st.error("CLAVES GUARDADAS · BINANCE BLOQUEA LA REGIÓN/IP DEL SERVIDOR STREAMLIT")
+        st.write(
+            "El agente probó los endpoints REST oficiales de Binance. Si todos responden con restricción regional, "
+            "el problema no es la firma HMAC ni demuestra que las claves estén dañadas: Binance está rechazando la IP "
+            "desde la que Streamlit Community Cloud intenta leer la cuenta."
+        )
+        st.caption(
+            "El análisis público, el monitor V4.2 y Telegram pueden seguir funcionando. "
+            "No se intentará evadir la restricción regional."
+        )
+        with st.expander("Detalle técnico", expanded=False):
+            st.code(str(exc), language="text")
+
+    except BinanceAuthenticationError as exc:
+        st.error("Binance rechazó las credenciales o la configuración de la API.")
+        st.write(
+            "Revisa en Binance que la API HMAC siga activa, que Enable Reading esté habilitado y que trading, "
+            "Futures, Margin y retiros permanezcan deshabilitados. Si configuraste restricción por IP, la IP de "
+            "Streamlit puede cambiar y no es adecuada para una allowlist fija."
+        )
+        with st.expander("Detalle técnico", expanded=False):
+            st.code(str(exc), language="text")
+
+    except BinanceRateLimitError as exc:
+        st.warning("Binance limitó temporalmente la conexión. El agente esperará el siguiente refresco.")
+        with st.expander("Detalle técnico", expanded=False):
+            st.code(str(exc), language="text")
 
     except BinanceReadOnlyError as exc:
-        st.error(f"No fue posible leer la cuenta Binance: {exc}")
-        st.caption("Verifica la API Key, API Secret, permisos y configuración de restricciones.")
+        st.error("No fue posible leer la cuenta Binance.")
+        with st.expander("Detalle técnico", expanded=False):
+            st.code(str(exc), language="text")
+
     except Exception as exc:
-        st.error(f"Error al cargar la cuenta en modo lectura: {exc}")
+        st.error(f"Error al cargar la cuenta en modo lectura: {type(exc).__name__}: {exc}")
 
 st.divider()
 st.header("FUTURES LAB V4.2")
