@@ -145,6 +145,21 @@ def _message(signal: dict) -> str:
             and signal.get("fib_distance_atr") is not None
             else "Fibonacci: sin confluencia activa"
         ),
+        f"Opportunity Score: {float(signal.get('opportunity_score') or 0):.1f}/100",
+        f"Risk State: {signal.get('risk_state') or '-'}",
+        "",
+        (
+            "STATE: "
+            f"{signal.get('market_state',{}).get('regime','-')} · "
+            f"{signal.get('market_state',{}).get('momentum','-')} · "
+            f"VOL {signal.get('market_state',{}).get('volume_state','-')} · "
+            f"VOLAT {signal.get('market_state',{}).get('volatility_state','-')}"
+        ),
+        (
+            f"Funding: {float(signal.get('market_state',{}).get('funding_rate'))*100:+.4f}%"
+            if signal.get('market_state',{}).get('funding_rate') is not None
+            else "Funding: N/D"
+        ),
         "",
         f"Entrada ref.: {_price(signal.get('entry'))} USDT",
         f"Stop Loss: {_price(signal.get('stop'))} USDT",
@@ -205,6 +220,14 @@ def _message(signal: dict) -> str:
         (
             f"Crecimiento geométrico proxy: {float(signal.get('geometric_growth_pct_year')):+.1f}%/año"
             if signal.get("geometric_growth_pct_year") is not None else "Crecimiento geométrico proxy: -"
+        ),
+        (
+            f"Brier TEST: {float(signal.get('brier_test')):.3f}"
+            if signal.get("brier_test") is not None else "Brier TEST: -"
+        ),
+        (
+            f"Brier Skill: {float(signal.get('brier_skill_test'))*100:+.1f}%"
+            if signal.get("brier_skill_test") is not None else "Brier Skill: -"
         ),
         "",
         "VALIDACIÓN DE PRECIO AL ENVIAR",
