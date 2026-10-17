@@ -30,7 +30,7 @@ jobs:
       - name: Restore recommendation history
         uses: actions/cache/restore@v4
         with:
-          path: .state/auto_alerts.json
+          path: .state
           key: trader-auto-state-${{ github.run_id }}
           restore-keys: |
             trader-auto-state-
@@ -91,7 +91,7 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: .state/auto_alerts.json
+          path: .state
           key: trader-auto-state-${{ github.run_id }}
 
       - name: Record candidate notification
