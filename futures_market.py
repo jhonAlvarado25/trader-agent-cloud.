@@ -348,3 +348,61 @@ def get_funding_history(symbol: str, start_ms: int, end_ms: int) -> pd.DataFrame
     # No inventar funding si no hay archivo: devolver vacío; el backtest lo tratará como 0
     # y la interfaz debe indicar que el componente funding no estuvo disponible.
     return pd.DataFrame(columns=["funding_time","funding_rate"])
+
+
+def get_futures_context(symbol: str) -> dict:
+    """Contexto derivado público actual para el State Engine.
+
+    Nunca inventa funding u open interest. Si Binance Futures REST está
+    bloqueado por geolocalización, devuelve los campos como no disponibles.
+    """
+    ctx = {
+        "symbol": symbol,
+        "funding_rate": None,
+        "mark_price": None,
+        "index_price": None,
+        "open_interest": None,
+        "source": None,
+        "available": False,
+        "errors": [],
+    }
+
+    try:
+        mark = _request("/fapi/v1/premiumIndex", {"symbol": symbol}, timeout=12)
+        if isinstance(mark, dict):
+            ctx["funding_rate"] = float(mark.get("lastFundingRate")) if mark.get("lastFundingRate") is not None else None
+            ctx["mark_price"] = float(mark.get("markPrice")) if mark.get("markPrice") is not None else None
+            ctx["index_price"] = float(mark.get("indexPrice")) if mark.get("indexPrice") is not None else None
+            ctx["source"] = "Binance USD-M Futures REST"
+            ctx["available"] = True
+    except Exception as exc:
+        ctx["errors"].append(f"funding/mark: {type(exc).__name__}: {exc}")
+
+    try:
+        oi = _request("/fapi/v1/openInterest", {"symbol": symbol}, timeout=12)
+        if isinstance(oi, dict) and oi.get("openInterest") is not None:
+            ctx["open_interest"] = float(oi["openInterest"])
+            ctx["source"] = ctx["source"] or "Binance USD-M Futures REST"
+            ctx["available"] = True
+    except Exception as exc:
+        ctx["errors"].append(f"open_interest: {type(exc).__name__}: {exc}")
+
+    if ctx["funding_rate"] is None:
+        try:
+            now = pd.Timestamp.now(tz="UTC")
+            start = now - pd.Timedelta(days=35)
+            hist = get_funding_history(
+                symbol,
+                int(start.timestamp() * 1000),
+                int(now.timestamp() * 1000),
+            )
+            if hist is not None and not hist.empty:
+                last = hist.iloc[-1]
+                ctx["funding_rate"] = float(last["funding_rate"])
+                ctx["funding_time"] = str(last["funding_time"])
+                ctx["source"] = ctx["source"] or "Binance Vision Funding"
+                ctx["available"] = True
+        except Exception as exc:
+            ctx["errors"].append(f"funding_fallback: {type(exc).__name__}: {exc}")
+
+    return ctx
