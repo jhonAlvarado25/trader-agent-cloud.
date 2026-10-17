@@ -8,6 +8,7 @@ import pandas as pd
 
 from config import CFG
 from auto_decision_v42 import automatic_recommendation, detect_current_candidates
+from journal_v42 import record_signals, settle_open_signals, calibration_summary
 
 STATE_PATH = Path(".state/auto_alerts.json")
 OUTPUT = Path("auto_signals.json")
@@ -121,6 +122,12 @@ def make_signal(symbol: str) -> dict | None:
         "kelly_quarter_conservative": finite_or_none(stats.get("kelly_quarter_conservative_test")),
         "wilson_win_low": finite_or_none(stats.get("wilson_win_low_test")),
         "geometric_growth_pct_year": finite_or_none(stats.get("geometric_growth_pct_year_test")),
+        "predicted_win_probability_val": finite_or_none(stats.get("predicted_win_probability_val")),
+        "brier_test": finite_or_none(stats.get("brier_test")),
+        "brier_skill_test": finite_or_none(stats.get("brier_skill_test")),
+        "market_state": rec.get("market_state", {}),
+        "opportunity_score": finite_or_none(rec.get("opportunity_score")),
+        "risk_state": rec.get("risk_state"),
     }
 
     payload["key"] = "|".join([
@@ -134,6 +141,16 @@ def make_signal(symbol: str) -> dict | None:
 
 
 def main() -> int:
+    try:
+        settled = settle_open_signals()
+        cal = calibration_summary()
+        print(
+            f"[JOURNAL] resueltas nuevas={settled} · total={cal.get('resolved',0)} · "
+            f"Brier={cal.get('brier') if cal.get('brier') is not None else 'N/D'}"
+        )
+    except Exception as exc:
+        print(f"[JOURNAL] No fue posible actualizar calibración: {type(exc).__name__}: {exc}")
+
     state = load_state()
     sent = set(state.get("sent_keys", []))
     new_signals = []
@@ -162,6 +179,17 @@ def main() -> int:
         json.dumps(new_signals, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+    try:
+        added = record_signals(new_signals)
+        cal = calibration_summary()
+        print(
+            f"[JOURNAL] registradas={added} · resueltas={cal.get('resolved',0)} · "
+            f"win observado={cal.get('observed_win_rate') if cal.get('observed_win_rate') is not None else 'N/D'} · "
+            f"Brier={cal.get('brier') if cal.get('brier') is not None else 'N/D'}"
+        )
+    except Exception as exc:
+        print(f"[JOURNAL] Error registrando señales: {type(exc).__name__}: {exc}")
 
     print(f"[DONE] nuevas recomendaciones: {len(new_signals)} | errores: {errors}")
     return 0 if errors == 0 else 2
