@@ -203,7 +203,7 @@ def build_state_snapshot(
 
     actual_risk = _finite(risk_info.get("actual_risk_pct_budget"), 0.0) or 0.0
     budget_used = _finite(risk_info.get("budget_used_pct"), 0.0) or 0.0
-    configured_risk = float(cfg.default_risk_pct)
+    configured_risk = float(risk_info.get("target_risk_pct", cfg.default_risk_pct))
 
     risk_state = "SAFE"
     risk_reason = "Riesgo dimensionado dentro del límite configurado."
