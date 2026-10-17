@@ -49,7 +49,7 @@ h2,h3{font-size:1.1rem!important}
 """, unsafe_allow_html=True)
 
 st.title("Trader Agent Cloud V4.2")
-st.caption("Spot + Futures Lab · LONG/SHORT · Fibonacci · PSR/Kelly/Sharpe/Sortino · Bootstrap · Monte Carlo · Solo lectura")
+st.caption("Spot + Futures Lab · State Engine · Opportunity Score · Fibonacci · Funding/OI · Brier/PSR/Kelly · Solo lectura")
 
 with st.sidebar:
     symbol = st.selectbox("Activo", list(CFG.symbols), index=list(CFG.symbols).index(CFG.primary_symbol))
@@ -457,6 +457,48 @@ if auto.get("state") == "OPERACIÓN CANDIDATA":
         f"variante **{auto.get('analysis_variant','BASE')}**."
     )
 
+    state = auto.get("market_state", {})
+    if state:
+        st.markdown("**State Engine V4.2**")
+        se1,se2,se3,se4 = st.columns(4)
+        se1.metric("Opportunity Score", f"{float(state.get('opportunity_score',0)):.1f}/100")
+        se2.metric("Régimen", str(state.get("regime","-")))
+        se3.metric("Momentum", str(state.get("momentum","-")))
+        se4.metric("Risk State", str(state.get("risk_state","-")))
+
+        se5,se6,se7,se8 = st.columns(4)
+        se5.metric("Volumen", str(state.get("volume_state","-")))
+        se6.metric("Volatilidad", str(state.get("volatility_state","-")))
+        se7.metric("Fibonacci", str(state.get("fibonacci","-")))
+        funding = state.get("funding_rate")
+        se8.metric(
+            "Funding",
+            "N/D" if funding is None else f"{float(funding)*100:+.4f}%"
+        )
+
+        oi = state.get("open_interest")
+        if oi is not None:
+            st.caption(
+                f"Open Interest actual: **{float(oi):,.2f}** unidades del activo · "
+                f"fuente: {state.get('derivatives_source') or 'Binance Futures'}."
+            )
+        else:
+            st.caption(
+                "Open Interest: N/D desde la infraestructura actual. El agente no inventa este dato ni lo usa como señal cuando no está disponible."
+            )
+
+        components = state.get("score_components", {})
+        if components:
+            with st.expander("Componentes del Opportunity Score", expanded=False):
+                score_df = pd.DataFrame([
+                    {"Componente":k.capitalize(), "Puntos":v}
+                    for k,v in components.items()
+                ])
+                st.dataframe(score_df, hide_index=True, use_container_width=True)
+                st.caption(
+                    "El Opportunity Score es diagnóstico y no puede saltarse el filtro estadístico ni el Risk Engine."
+                )
+
     fib_level = auto.get("fib_nearest")
     fib_dist = auto.get("fib_distance_atr")
     if auto.get("fib_confluence") and fib_level is not None and math.isfinite(float(fib_level)):
@@ -547,6 +589,15 @@ Reduce Only en SL/TP: Sí""",
         qn1.metric("Calmar TEST", "∞" if math.isinf(float(calmar)) else f"{float(calmar):.2f}")
         qn2.metric("Win-rate inferior 95%", f"{stats.get('wilson_win_low_test',0)*100:.1f}%")
         qn3.metric("Crecimiento geométrico proxy", f"{stats.get('geometric_growth_pct_year_test',0):+.1f}%/año")
+
+        qb1,qb2,qb3 = st.columns(3)
+        qb1.metric("Prob. calibrada desde VAL", f"{stats.get('predicted_win_probability_val',0.5)*100:.1f}%")
+        qb2.metric("Brier TEST", f"{stats.get('brier_test',0.25):.3f}")
+        qb3.metric("Brier Skill", f"{stats.get('brier_skill_test',0)*100:+.1f}%")
+        st.caption(
+            "Brier mide calibración probabilística: 0 es perfecto; 0,25 equivale aproximadamente a predecir 50% en un resultado binario. "
+            "Brier Skill positivo indica mejora frente a esa referencia."
+        )
 
         st.caption(
             "Kelly, Sharpe, Sortino, Calmar y PSR se usan para medir robustez/riesgo de la evidencia histórica. "
@@ -752,7 +803,7 @@ st.header("FUTURES LAB V4.2")
 st.caption(
     "Laboratorio histórico bajo demanda. Compara Spot LONG contra USDⓈ-M Futures LONG/SHORT "
     "en 1H, 2H y 4H. Incluye comisiones, slippage, funding histórico, división temporal 60/20/20, "
-    "bootstrap, Monte Carlo, Fibonacci como confluencia y métricas Sharpe/Sortino/Calmar/PSR/Kelly. No ejecuta órdenes."
+    "bootstrap, Monte Carlo, Fibonacci, Brier, Sharpe/Sortino/Calmar/PSR/Kelly. No ejecuta órdenes."
 )
 
 with st.expander("Configurar análisis V4.0", expanded=False):
@@ -850,6 +901,8 @@ if isinstance(lab_results, pd.DataFrame) and not lab_results.empty:
         "PSR>0": show["psr_test"].map(lambda x:f"{x*100:.1f}%"),
         "Kelly cons.": show["kelly_conservative_test"].map(lambda x:f"{x*100:.2f}%"),
         "Geom./año": show["geometric_growth_pct_year_test"].map(lambda x:f"{x:+.1f}%"),
+        "Brier": show["brier_test"].map(lambda x:f"{x:.3f}"),
+        "Brier Skill": show["brier_skill_test"].map(lambda x:f"{x*100:+.1f}%"),
         "Costo fee": show["avg_fee_r"].map(lambda x:f"{x:.3f}R"),
         "Funding": show["avg_funding_r"].map(lambda x:f"{x:+.3f}R"),
     })
