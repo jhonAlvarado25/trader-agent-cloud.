@@ -47,6 +47,7 @@ jobs:
           import json
           import os
           from pathlib import Path
+          from journal_v42 import calibration_summary
 
           path = Path("auto_signals.json")
           signals = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
@@ -75,7 +76,22 @@ jobs:
                           f.write(f"- Margen: ISOLATED · {s['leverage']}x\n")
                           f.write(f"- Margen aprox.: COP {s['margin_cop']:.0f}\n")
                       f.write(f"- Expectativa TEST: {s['expectancy_r']:+.3f}R\n")
-                      f.write(f"- P(expectativa > 0): {s['prob_positive']*100:.1f}%\n\n")
+                      f.write(f"- P(expectativa > 0): {s['prob_positive']*100:.1f}%\n")
+                      f.write(f"- Opportunity Score: {float(s.get('opportunity_score') or 0):.1f}/100\n")
+                      f.write(f"- Risk State: {s.get('risk_state') or '-'}\n")
+                      if s.get("brier_test") is not None:
+                          f.write(f"- Brier TEST: {float(s['brier_test']):.3f}\n")
+                      f.write("\n")
+
+              cal = calibration_summary()
+              f.write("## Calibración forward del agente\n\n")
+              f.write(f"- Señales resueltas: **{cal.get('resolved',0)}**\n")
+              if cal.get("brier") is None:
+                  f.write("- Brier forward: **N/D** (aún no hay suficientes señales resueltas)\n")
+              else:
+                  f.write(f"- Brier forward: **{cal['brier']:.3f}**\n")
+                  f.write(f"- Probabilidad media pronosticada: **{cal['mean_probability']*100:.1f}%**\n")
+                  f.write(f"- Win rate observado: **{cal['observed_win_rate']*100:.1f}%**\n")
           PY
 
       - name: Send Telegram alert
