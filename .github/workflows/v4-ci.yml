@@ -27,7 +27,7 @@ jobs:
 
       - name: Syntax
         run: |
-          python -m py_compile app.py config.py market.py futures_market.py futures_lab.py quant_math.py auto_decision_v42.py auto_monitor.py ack_signals.py telegram_notify.py engine.py indicators.py setups.py backtest.py risk.py binance_readonly.py monitor.py monitor_status.py
+          python -m py_compile app.py config.py market.py futures_market.py futures_lab.py quant_math.py auto_decision_v42.py state_engine_v42.py journal_v42.py auto_monitor.py ack_signals.py telegram_notify.py engine.py indicators.py setups.py backtest.py risk.py binance_readonly.py monitor.py monitor_status.py
 
       - name: Import smoke test
         run: |
@@ -36,6 +36,8 @@ jobs:
           import futures_market
           import quant_math
           import auto_decision_v42
+          import state_engine_v42
+          import journal_v42
           import binance_readonly
           import engine
           print("Trader Agent V4 + Fibonacci/Quant imports OK")
@@ -46,7 +48,7 @@ jobs:
           python - <<'PY'
           import numpy as np
           import pandas as pd
-          from quant_math import add_fibonacci_features, performance_math
+          from quant_math import add_fibonacci_features, performance_math, beta_smoothed_probability, brier_score, brier_skill_score
 
           n = 260
           close = np.linspace(100, 160, n) + 2*np.sin(np.arange(n)/7)
@@ -71,5 +73,55 @@ jobs:
           assert stats["profit_factor"] > 1
           assert stats["psr_gt_zero"] > 0.5
           assert stats["kelly_full"] > 0
-          print("Fibonacci/Quant smoke OK", stats)
+
+          p = beta_smoothed_probability(7, 10)
+          bs = brier_score(p, [1,1,1,1,1,1,1,0,0,0])
+          skill = brier_skill_score(bs)
+          assert 0 <= p <= 1
+          assert 0 <= bs <= 1
+          assert skill > -1
+          print("Fibonacci/Quant/Brier smoke OK", stats, p, bs, skill)
+          PY
+
+      - name: State Engine smoke
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from config import CFG
+          from state_engine_v42 import build_state_snapshot
+
+          row = pd.Series({
+              "close": 105.0,
+              "ema20": 103.0,
+              "ema50": 100.0,
+              "ema200": 90.0,
+              "rsi": 52.0,
+              "vol_ratio": 1.2,
+          })
+          candidate = {
+              "row": row,
+              "direction": "LONG",
+              "setup": "BALANCED_PULLBACK",
+              "timeframe": "2h",
+              "fib_confluence": True,
+              "fib_nearest": 0.618,
+              "fib_distance_atr": 0.2,
+              "volatility_ratio": 1.1,
+          }
+          stats = {
+              "validation_score": 0.7,
+              "psr_test": 0.9,
+              "brier_skill_test": 0.1,
+              "evidence": "VALIDA",
+          }
+          risk = {
+              "actual_risk_pct_budget": CFG.default_risk_pct,
+              "budget_used_pct": 0.6,
+              "target_risk_pct": CFG.default_risk_pct,
+          }
+          state = build_state_snapshot(candidate, stats, risk, CFG, {"funding_rate":0.0})
+          assert 0 <= state["opportunity_score"] <= 100
+          assert state["risk_state"] == "SAFE"
+          assert state["regime"] == "ALCISTA"
+          print("State Engine smoke OK", state)
           PY
