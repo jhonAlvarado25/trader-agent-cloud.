@@ -237,6 +237,35 @@ def performance_math(
     }
 
 
+
+def beta_smoothed_probability(wins: int, n: int, alpha: float = 5.0, beta: float = 5.0) -> float:
+    """Probabilidad binaria suavizada para evitar extremos con muestras pequeñas."""
+    n = max(0, int(n))
+    wins = min(max(0, int(wins)), n)
+    a = max(float(alpha), 0.0)
+    b = max(float(beta), 0.0)
+    denom = n + a + b
+    return float((wins + a) / denom) if denom > 0 else 0.5
+
+
+def brier_score(probability: float, outcomes) -> float:
+    """Brier score binario: 0 es perfecto, 0.25 equivale a predecir 50% siempre."""
+    p = min(max(float(probability), 0.0), 1.0)
+    y = np.asarray(list(outcomes), dtype=float)
+    y = y[np.isfinite(y)]
+    if len(y) == 0:
+        return 0.25
+    y = np.clip(y, 0.0, 1.0)
+    return float(np.mean((p - y) ** 2))
+
+
+def brier_skill_score(score: float, reference_score: float = 0.25) -> float:
+    """Mejora relativa frente a un pronóstico binario de referencia."""
+    ref = float(reference_score)
+    if ref <= 0:
+        return 0.0
+    return float(1.0 - float(score) / ref)
+
 def validation_score(stats: dict) -> float:
     """Puntuación estable para comparar variantes usando VALIDACIÓN, no TEST."""
     exp_r = max(-1.0, min(float(stats.get("expectancy_val_r", 0.0)), 2.0))
