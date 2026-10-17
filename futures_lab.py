@@ -8,7 +8,7 @@ import pandas as pd
 
 from futures_market import get_futures_klines, get_funding_history
 from market import get_klines
-from quant_math import add_fibonacci_features, performance_math
+from quant_math import add_fibonacci_features, performance_math, beta_smoothed_probability, brier_score, brier_skill_score
 
 
 TIMEFRAME_HOURS = {"30m": 0.5, "1h": 1, "2h": 2, "4h": 4}
@@ -320,6 +320,13 @@ def summarize_config(
     val_math = performance_math(val, val_years, risk_per_trade_pct)
     test_math = performance_math(test, test_years, risk_per_trade_pct)
 
+    val_outcomes = (val["net_r"].to_numpy(float) > 0).astype(float) if len(val) else np.array([])
+    test_outcomes = (test["net_r"].to_numpy(float) > 0).astype(float) if len(test) else np.array([])
+    val_wins = int(val_outcomes.sum()) if len(val_outcomes) else 0
+    p_win_val = beta_smoothed_probability(val_wins, len(val_outcomes), 5.0, 5.0)
+    brier_test = brier_score(p_win_val, test_outcomes)
+    brier_skill = brier_skill_score(brier_test, 0.25)
+
     evidence = "INSUFICIENTE"
     if (
         len(test) >= 200 and
@@ -372,6 +379,9 @@ def summarize_config(
         "kelly_quarter_conservative_test": float(test_math["kelly_quarter_conservative"]),
         "wilson_win_low_test": float(test_math["wilson_win_low"]),
         "geometric_growth_pct_year_test": float(test_math["geometric_growth_pct_year"]),
+        "predicted_win_probability_val": float(p_win_val),
+        "brier_test": float(brier_test),
+        "brier_skill_test": float(brier_skill),
         "evidence": evidence,
         **bs,
     }
