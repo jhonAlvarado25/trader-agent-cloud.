@@ -4,10 +4,11 @@ import pandas as pd
 
 from config import StrategyConfig
 from market import get_klines, get_live_price
-from futures_market import get_futures_klines, get_funding_history
+from futures_market import get_futures_klines, get_funding_history, get_futures_context
 from futures_lab import LabCosts, bars_for_years, enrich_lab, simulate_config, summarize_config
 from risk import position_size_directional
 from quant_math import validation_score
+from state_engine_v42 import build_state_snapshot
 
 RANK={"INSUFICIENTE":0,"VALIDA":1,"PROMETEDORA":2,"FUERTE":3}
 _HISTORY_CACHE={}
@@ -263,12 +264,45 @@ def automatic_recommendation(symbol:str,cfg:StrategyConfig,operation_budget_cop=
 
     sz=position_size_directional(budget,risk,fx,lv["entry"],lv["stop"],lv["tp"],cost,c["direction"],lev)
     lsl=lv["stop"]*(1-cfg.stop_limit_buffer_pct) if w["instrument"]=="SPOT" else None
+
+    futures_context = {}
+    try:
+        futures_context = get_futures_context(symbol)
+    except Exception:
+        futures_context = {}
+
+    state_snapshot = build_state_snapshot(
+        c,
+        {**w, "evidence": w.get("evidence")},
+        {**sz, "target_risk_pct": risk},
+        cfg,
+        futures_context=futures_context,
+    )
+
+    if state_snapshot.get("risk_state") == "BLOCKED":
+        return {
+            "state":"NO OPERAR",
+            "reason":f"Risk Engine bloqueó la operación: {state_snapshot.get('risk_reason','riesgo fuera de política')}",
+            "symbol":symbol,
+            "instrument":w["instrument"],
+            "direction":c["direction"],
+            "timeframe":c["timeframe"],
+            "setup":c["setup"],
+            "evidence":w["evidence"],
+            "operation_budget_cop":budget,
+            "risk_budget_cop":budget*risk,
+            "market_state":state_snapshot,
+        }
+
     return {
         "state":"OPERACIÓN CANDIDATA",
         "reason":f"{c['setup']} {c['direction']} {c['timeframe']} · evidencia {w['evidence']} · {w['instrument']} · variante {w.get('variant','BASE')}.",
         "symbol":symbol,"instrument":w["instrument"],"direction":c["direction"],"timeframe":c["timeframe"],
         "setup":c["setup"],"evidence":w["evidence"],"signal_time":str(c["signal_time"]),"entry_drift_atr":drift,"atr":float(c["atr"]),
         "analysis_variant":w.get("variant","BASE"),
+        "market_state":state_snapshot,
+        "opportunity_score":float(state_snapshot.get("opportunity_score",0.0)),
+        "risk_state":state_snapshot.get("risk_state","SAFE"),
         "fib_confluence":bool(c.get("fib_confluence",False)),
         "fib_nearest":float(c.get("fib_nearest",float("nan"))),
         "fib_distance_atr":float(c.get("fib_distance_atr",float("nan"))),
@@ -297,6 +331,9 @@ def automatic_recommendation(symbol:str,cfg:StrategyConfig,operation_budget_cop=
                  "kelly_quarter_conservative_test":float(w.get("kelly_quarter_conservative_test",0.0)),
                  "wilson_win_low_test":float(w.get("wilson_win_low_test",0.0)),
                  "geometric_growth_pct_year_test":float(w.get("geometric_growth_pct_year_test",0.0)),
+                 "predicted_win_probability_val":float(w.get("predicted_win_probability_val",0.5)),
+                 "brier_test":float(w.get("brier_test",0.25)),
+                 "brier_skill_test":float(w.get("brier_skill_test",0.0)),
                  "validation_score":float(w.get("validation_score",0.0)),
                  "variant":w.get("variant","BASE"),
                  "variant_comparison":w.get("variant_comparison",[])},
