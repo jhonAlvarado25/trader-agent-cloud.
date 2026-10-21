@@ -1,1 +1,52 @@
-name: BTC 85300 Telegram Alert\n\non:\n  workflow_dispatch:\n  schedule:\n    - cron: "*/5 * * * *"\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: btc-85300-price-alert\n  cancel-in-progress: false\n\njobs:\n  watch-btc:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Python\n        uses: actions/setup-python@v5\n        with:\n          python-version: "3.12"\n\n      - name: Restore alert state\n        uses: actions/cache/restore@v4\n        with:\n          path: .state/btc_85300_alert.json\n          key: btc-85300-state-${{ github.run_id }}\n          restore-keys: |\n            btc-85300-state-\n\n      - name: Install minimal dependencies\n        run: python -m pip install requests pandas\n\n      - name: Check BTC price and notify Telegram\n        env:\n          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}\n          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}\n          BTC_ALERT_TARGET: "85300"\n        run: python btc_price_alert.py\n\n      - name: Save alert state\n        if: always()\n        uses: actions/cache/save@v4\n        with:\n          path: .state/btc_85300_alert.json\n          key: btc-85300-state-${{ github.run_id }}\n
+name: BTC 85300 Telegram Alert
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: btc-85300-price-alert
+  cancel-in-progress: false
+
+jobs:
+  watch-btc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore alert state
+        uses: actions/cache/restore@v4
+        with:
+          path: .state/btc_85300_alert.json
+          key: btc-85300-state-${{ github.run_id }}
+          restore-keys: |
+            btc-85300-state-
+
+      - name: Install minimal dependencies
+        run: python -m pip install requests pandas
+
+      - name: Check BTC price and notify Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BTC_ALERT_TARGET: "85300"
+        run: python btc_price_alert.py
+
+      - name: Save alert state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state/btc_85300_alert.json
+          key: btc-85300-state-${{ github.run_id }}
