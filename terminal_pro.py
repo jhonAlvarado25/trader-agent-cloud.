@@ -198,12 +198,14 @@ with right:
 # Primero se evalúan las velas completas desde la apertura y después el tick.
 pre=paper_snapshot(DB_PATH)
 closed_in_cycle=[]
+marks={}
 for open_trade in pre["open_trades"]:
     sym=open_trade["symbol"]
     try:
         candles=recent_candles(sym)
         closed_in_cycle += paper_settle_candles(DB_PATH, sym, candles.to_dict("records"))
         px=live if sym==symbol and live is not None else quote(sym)
+        marks[sym]=float(px)
         closed_in_cycle += paper_mark_current_price(DB_PATH, sym, float(px))
     except Exception as exc:
         st.warning(f"Monitoreo PAPER de {sym} incompleto: {type(exc).__name__}. Revise la posición virtual.")
@@ -212,7 +214,8 @@ if closed_in_cycle:
     for tr in closed_in_cycle:
         st.toast(f"Salida PAPER {tr['symbol']}: {tr['exit_reason']} · {tr['net_pnl_usdt']:+.3f} USDT")
 
-marks={symbol:live} if live is not None else {}
+if live is not None:
+    marks[symbol]=float(live)
 snap=paper_snapshot(DB_PATH,marks)
 initial_usdt=snap["initial_usdt"]
 equity=snap["equity_usdt"]
