@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import json
 import math
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, Sequence
+
+from paper_pg_backend import connect_paper
 
 RISK_FRACTION = 0.012
 DAILY_LOSS_LIMIT = 0.024
@@ -29,17 +30,10 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _connect(path: str | Path) -> sqlite3.Connection:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(path), timeout=8, isolation_level=None)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA busy_timeout=8000")
-    con.execute("PRAGMA foreign_keys=ON")
-    return con
+def _connect(path: str | Path):
+    return connect_paper(path)
 
-
-def _log(con: sqlite3.Connection, event: str, detail: dict) -> None:
+def _log(con, event: str, detail: dict) -> None:
     con.execute(
         "INSERT INTO events(ts_utc,event,detail_json) VALUES (?,?,?)",
         (utc_now(), event, json.dumps(detail, ensure_ascii=False, allow_nan=False)),
@@ -90,24 +84,69 @@ def init_paper(path: str | Path, initial_usdt: float = 30.0) -> None:
             event TEXT NOT NULL,
             detail_json TEXT NOT NULL
         )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS worker_status(
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            last_attempt_utc TEXT,
+            last_success_utc TEXT,
+            status TEXT NOT NULL,
+            details_json TEXT NOT NULL
+        )""")
         con.execute(
             "INSERT OR IGNORE INTO account VALUES(1,?,?,?,?)",
             (initial, initial, initial, utc_now()),
         )
+        con.execute(
+            "INSERT OR IGNORE INTO worker_status VALUES(1,NULL,NULL,'NOT_CONFIGURED','{}')"
+        )
 
 
-def _account(con: sqlite3.Connection) -> dict:
+def _account(con) -> dict:
     row = con.execute("SELECT * FROM account WHERE id=1").fetchone()
     if row is None:
         raise RuntimeError("Cuenta PAPER no inicializada")
     return dict(row)
 
 
-def _trades(con: sqlite3.Connection) -> list[dict]:
+def _trades(con) -> list[dict]:
     return [dict(x) for x in con.execute("SELECT * FROM trades ORDER BY opened_at_utc DESC,id DESC")]
 
 
-def _get_estimated_equity(con: sqlite3.Connection, marks: Mapping[str,float] | None) -> float:
+
+def _worker_status(con) -> dict:
+    row=con.execute("SELECT * FROM worker_status WHERE id=1").fetchone()
+    if not row:
+        return {"status":"NOT_CONFIGURED","last_attempt_utc":None,"last_success_utc":None}
+    data=dict(row)
+    try:
+        data["details"]=json.loads(data.get("details_json") or "{}")
+    except (ValueError,TypeError):
+        data["details"]={}
+    return data
+
+
+def paper_update_worker_status(path: str | Path, status: str, details: dict) -> None:
+    """Guarda heartbeat durable; no almacena API keys ni contraseñas."""
+    if status not in {"OK","DEGRADED","ERROR"}:
+        raise ValueError("Estado del worker inválido")
+    payload=json.dumps(details,ensure_ascii=False,allow_nan=False)
+    if len(payload)>3000:
+        payload=json.dumps({"note":payload[:2800],"truncated":True},ensure_ascii=False)
+    now=utc_now()
+    with _connect(path) as con:
+        con.execute("BEGIN IMMEDIATE")
+        if status=="OK":
+            con.execute(
+                "UPDATE worker_status SET last_attempt_utc=?,last_success_utc=?,status=?,details_json=? WHERE id=1",
+                (now,now,status,payload),
+            )
+        else:
+            con.execute(
+                "UPDATE worker_status SET last_attempt_utc=?,status=?,details_json=? WHERE id=1",
+                (now,status,payload),
+            )
+
+
+def _get_estimated_equity(con, marks: Mapping[str,float] | None) -> float:
     cash = float(_account(con)["cash_usdt"])
     opens = con.execute("SELECT symbol,entry_fill,quantity FROM trades WHERE status='OPEN'")
     for row in opens:
@@ -120,7 +159,7 @@ def _get_estimated_equity(con: sqlite3.Connection, marks: Mapping[str,float] | N
     return cash
 
 
-def _daily_realized_pnl(con: sqlite3.Connection, day: str) -> float:
+def _daily_realized_pnl(con, day: str) -> float:
     row = con.execute(
         "SELECT COALESCE(SUM(net_pnl_usdt),0) AS amount FROM trades "
         "WHERE status='CLOSED' AND substr(closed_at_utc,1,10)=?",
@@ -129,7 +168,7 @@ def _daily_realized_pnl(con: sqlite3.Connection, day: str) -> float:
     return float(row["amount"])
 
 
-def _gate(con: sqlite3.Connection, marks: Mapping[str,float] | None) -> dict:
+def _gate(con, marks: Mapping[str,float] | None) -> dict:
     a = _account(con)
     equity = _get_estimated_equity(con, marks)
     hwm = max(float(a["high_water_usdt"]), equity)
@@ -188,6 +227,7 @@ def paper_snapshot(path: str | Path, marks: Mapping[str,float] | None = None) ->
             "events": [dict(row) for row in con.execute(
                 "SELECT * FROM events ORDER BY id DESC LIMIT 100"
             )],
+            "worker": _worker_status(con),
         }
 
 
@@ -287,7 +327,7 @@ def paper_enter(
 
 
 def _close_in_transaction(
-    con: sqlite3.Connection,
+    con,
     trade: dict,
     price: float,
     reason: str,
