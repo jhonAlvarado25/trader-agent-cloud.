@@ -405,8 +405,10 @@ def paper_settle_candles(
                     bar_open=datetime.fromisoformat(bar_open)
                 if bar_open.tzinfo is None:
                     bar_open=bar_open.replace(tzinfo=timezone.utc)
-                if bar_open < opened:
-                    continue
+                # Una vela abierta antes de la entrada puede contener precios
+                # PREVIOS a la compra. Nunca acreditar un TP con esa vela.
+                # Si toca el Stop, se imputa STOP de forma conservadora.
+                partial_entry_candle = bar_open < opened
                 close_t=bar.get("close_time")
                 if close_t is not None:
                     if isinstance(close_t,str):
@@ -415,6 +417,12 @@ def paper_settle_candles(
                         close_t=close_t.replace(tzinfo=timezone.utc)
                     if close_t>datetime.now(timezone.utc):
                         continue
+                    if close_t<=opened:
+                        continue
+                elif partial_entry_candle:
+                    # Sin marca temporal de cierre no es posible afirmar
+                    # que esta vela incluye precios posteriores a entrada.
+                    continue
                 high=float(bar["high"])
                 low=float(bar["low"])
                 open_price=float(bar["open"])
@@ -426,7 +434,7 @@ def paper_settle_candles(
                     # Conservador ante GAP a la baja y velas que tocan TP/SL.
                     ref=min(sl,open_price)
                     reason="STOP_AND_TP_SAME_CANDLE" if high>=tp else "STOP"
-                elif high>=tp:
+                elif not partial_entry_candle and high>=tp:
                     ref=tp
                     reason="TP"
                 else:
