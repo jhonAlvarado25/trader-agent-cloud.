@@ -54,6 +54,16 @@ def replay_one(target: str, trade: dict, now: datetime | None=None) -> dict:
         }
 
     completed=df[df["close_time"]<=pd.Timestamp(now)].copy()
+    # Fail closed si falta una vela completa entre la entrada y la última
+    # disponible, o si el feed deja de avanzar. El ticker no sustituye el
+    # camino histórico para reconstruir toques intravela.
+    future=completed[completed["open_time"]>=pd.Timestamp(opened)].copy()
+    if len(future)>1:
+        spacing=future["open_time"].diff().dropna().dt.total_seconds()
+        if (spacing>901).any():
+            return {"symbol":symbol,"status":"DATA_GAP","message":"Faltan velas consecutivas; revisión manual PAPER requerida."}
+    if completed.empty or (now-completed.iloc[-1]["close_time"].to_pydatetime()).total_seconds()>2700:
+        return {"symbol":symbol,"status":"DATA_GAP","message":"Última vela completa demasiado antigua; no se liquida."}
     closes=paper_settle_candles(target,symbol,completed.to_dict("records"))
     if closes:
         return {"symbol":symbol,"status":"SETTLED_CANDLES","closed":[x["id"] for x in closes]}
