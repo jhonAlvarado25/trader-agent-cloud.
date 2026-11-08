@@ -39,3 +39,33 @@ jobs:
 
       - name: Durable PAPER backend and worker tests
         run: python -m unittest discover -s tests -p 'test_paper_phase_two.py' -v
+
+      - name: Start disposable PostgreSQL with TLS
+        run: |
+          docker run -d --name trader-pro-ci-pg \
+            -e POSTGRES_PASSWORD=paper-ci-only \
+            -p 127.0.0.1:55432:5432 postgres:16
+          for i in $(seq 1 40); do
+            if docker exec trader-pro-ci-pg pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout /tmp/trader-pro-server.key \
+            -out /tmp/trader-pro-server.crt -subj '/CN=localhost' >/dev/null 2>&1
+          docker cp /tmp/trader-pro-server.key trader-pro-ci-pg:/var/lib/postgresql/data/server.key
+          docker cp /tmp/trader-pro-server.crt trader-pro-ci-pg:/var/lib/postgresql/data/server.crt
+          docker exec -u root trader-pro-ci-pg sh -c '
+            chown postgres:postgres /var/lib/postgresql/data/server.key /var/lib/postgresql/data/server.crt
+            chmod 600 /var/lib/postgresql/data/server.key
+            chmod 644 /var/lib/postgresql/data/server.crt
+            echo "ssl=on" >> /var/lib/postgresql/data/postgresql.conf
+          '
+          docker restart trader-pro-ci-pg
+          for i in $(seq 1 40); do
+            if docker exec trader-pro-ci-pg pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+      - name: PostgreSQL TLS lifecycle integration
+        env:
+          TRADER_TEST_PG_URL: postgresql://postgres:paper-ci-only@127.0.0.1:55432/postgres
+        run: python -m unittest discover -s tests -p 'test_paper_pg_integration.py' -v
