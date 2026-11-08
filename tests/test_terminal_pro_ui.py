@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
@@ -12,7 +13,7 @@ class TerminalAppSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             with patch.dict(os.environ, {"TRADER_PAPER_DB": os.path.join(d, "paper.db")}):
                 with patch("market.get_live_price", return_value=85000.0):
-                    app=AppTest.from_file("terminal_pro.py", default_timeout=35).run()
+                    app=AppTest.from_file(str(Path(__file__).resolve().parent.parent / "terminal_pro.py"), default_timeout=35).run()
                     self.assertEqual(
                         len(app.exception),0,
                         "El panel generó excepciones durante su arranque: "
