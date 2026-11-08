@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import hmac
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +42,44 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+def secret_value(key: str) -> str:
+    value=os.getenv(key,"").strip()
+    if value:
+        return value
+    try:
+        return str(st.secrets.get(key,"") or "").strip()
+    except Exception:
+        return ""
+
+
+db_url=secret_value("TRADER_PAPER_DATABASE_URL")
+REMOTE=bool(db_url)
+DB_PATH=db_url if REMOTE else Path(os.getenv("TRADER_PAPER_DB", ".state/pro_terminal_paper.db"))
+
+# La primera versión usa contraseña de acceso a la aplicación. El modo
+# persistente nunca debe exponer capital virtual/journal sin control de acceso.
+if REMOTE:
+    access_password=secret_value("TRADER_PAPER_DASHBOARD_PASSWORD")
+    if len(access_password)<16:
+        st.error(
+            "Falta configurar TRADER_PAPER_DASHBOARD_PASSWORD en Streamlit Secrets "
+            "(mínimo 16 caracteres). No se abre la base persistente sin autenticación."
+        )
+        st.stop()
+    if not st.session_state.get("pro_authenticated",False):
+        st.title("Trader Agent Pro · acceso privado")
+        with st.form("pro_login"):
+            answer=st.text_input("Contraseña de la terminal",type="password")
+            submitted=st.form_submit_button("Entrar")
+        if submitted:
+            if hmac.compare_digest(answer,access_password):
+                st.session_state["pro_authenticated"]=True
+                st.rerun()
+            else:
+                st.error("Acceso no autorizado.")
+        st.caption("Acceso privado al simulador. No introduzca claves Binance aquí.")
+        st.stop()
+
 st_autorefresh(interval=30000, key="pro_terminal_refresher")
 st.markdown("""
 <style>
@@ -55,8 +94,6 @@ div[data-testid="stVerticalBlockBorderWrapper"]{border-radius:16px}
 }
 </style>""",unsafe_allow_html=True)
 
-DB_PATH = Path(os.getenv("TRADER_PAPER_DB", ".state/pro_terminal_paper.db"))
-RISK_COP_REFERENCE = 1_000_000
 
 
 def money(x: float, unit: str="USDT") -> str:
@@ -172,12 +209,26 @@ with st.sidebar:
     )
     st.caption("Riesgo: 1,20% · Pérdida diaria máxima: 2,40% del capital inicial · Drawdown: 6%.")
     st.caption("Una entrada por día UTC · Una posición abierta · Solo Spot LONG")
-    st.warning(
-        "La base SQLite vive en el disco temporal de Streamlit Community Cloud. "
-        "Puede perderse al reiniciar o redesplegar la app. Exporte los datos."
-    )
+    if REMOTE:
+        st.success("PostgreSQL persistente configurado · operaciones PAPER compartidas con el worker.")
+        st.caption("El proceso GitHub Actions debe configurarse por separado. Supabase podría pausarse según el plan.")
+        if st.button("Cerrar sesión privada"):
+            st.session_state["pro_authenticated"]=False
+            st.rerun()
+    else:
+        st.warning(
+            "Modo LOCAL de práctica: la base SQLite puede perderse en un reinicio "
+            "de Streamlit. Para activar persistencia, configure Supabase en Secrets."
+        )
 
-init_paper(DB_PATH, initial_usdt=30.0)
+try:
+    init_paper(DB_PATH, initial_usdt=30.0)
+except Exception as exc:
+    st.error(
+        "No fue posible inicializar el almacenamiento PAPER. "
+        f"Tipo de error: {type(exc).__name__}. Revise la conexión segura."
+    )
+    st.stop()
 
 assets=list(CFG.symbols)
 left,right=st.columns([2,1],vertical_alignment="center")
@@ -194,25 +245,61 @@ with right:
         market_error=f"{type(exc).__name__}: {exc}"
         st.error("Precio público temporalmente no disponible")
 
-# Reconcilia posiciones PAPER al abrir/actualizar la página, NO 24x7.
-# Primero se evalúan las velas completas desde la apertura y después el tick.
+# En remoto, SOLO GitHub worker liquida posiciones; Streamlit es lector.
+# En SQLite local se mantiene reconciliación al refrescar, no 24x7.
 pre=paper_snapshot(DB_PATH)
 closed_in_cycle=[]
 marks={}
+worker=pre.get("worker",{})
+worker_age=elapsed_seconds(worker.get("last_success_utc") or "")
+worker_fresh=bool(REMOTE and worker.get("status")=="OK" and worker_age<=1200)
+
 for open_trade in pre["open_trades"]:
     sym=open_trade["symbol"]
     try:
-        candles=recent_candles(sym)
-        closed_in_cycle += paper_settle_candles(DB_PATH, sym, candles.to_dict("records"))
+        if not REMOTE:
+            candles=recent_candles(sym)
+            closed_in_cycle += paper_settle_candles(DB_PATH, sym, candles.to_dict("records"))
         px=live if sym==symbol and live is not None else quote(sym)
         marks[sym]=float(px)
-        closed_in_cycle += paper_mark_current_price(DB_PATH, sym, float(px))
+        if not REMOTE:
+            closed_in_cycle += paper_mark_current_price(DB_PATH, sym, float(px))
     except Exception as exc:
-        st.warning(f"Monitoreo PAPER de {sym} incompleto: {type(exc).__name__}. Revise la posición virtual.")
+        st.warning(
+            f"No fue posible actualizar {sym}. Error {type(exc).__name__}. "
+            "No se inventaron precios ni cierres."
+        )
+
+if REMOTE:
+    if worker_fresh:
+        st.success(
+            f"Worker PAPER: ACTUALIZADO · última comprobación correcta hace {worker_age/60:.1f} minutos."
+        )
+    else:
+        st.warning(
+            "Worker PAPER: INACTIVO, RETRASADO O DEGRADADO. No se permiten nuevas "
+            "operaciones PAPER hasta tener una revisión correcta reciente. "
+            f"Último estado: {worker.get('status','NOT_CONFIGURED')}."
+        )
+    with st.expander("Diagnóstico del worker",expanded=False):
+        st.json({
+            "status":worker.get("status"),
+            "last_attempt_utc":worker.get("last_attempt_utc"),
+            "last_success_utc":worker.get("last_success_utc"),
+            "details":worker.get("details",{}),
+        })
+else:
+    st.caption(
+        "Simulación local: la posición se revisa solo con esta página abierta "
+        "o cuando vuelve a cargar. Para seguimiento independiente, active la fase PostgreSQL + GitHub Worker."
+    )
 
 if closed_in_cycle:
     for tr in closed_in_cycle:
-        st.toast(f"Salida PAPER {tr['symbol']}: {tr['exit_reason']} · {tr['net_pnl_usdt']:+.3f} USDT")
+        st.toast(
+            f"Salida PAPER {tr['symbol']}: {tr['exit_reason']} · "
+            f"{tr['net_pnl_usdt']:+.3f} USDT"
+        )
 
 if live is not None:
     marks[symbol]=float(live)
@@ -234,10 +321,14 @@ r2.metric("Riesgo máx. próximo trade",money(equity*RISK_FRACTION))
 r3.metric("PnL realizado hoy",f"{gate['daily_realized_pnl_usdt']:+.2f} USDT")
 r4.metric("Drawdown",f"{gate['drawdown_pct']:.2f}%")
 
-if gate["allowed"]:
+allow_entry=gate["allowed"] and (not REMOTE or worker_fresh)
+if allow_entry:
     st.success("Risk Engine: SAFE — disponible para evaluar una nueva entrada PAPER.")
 else:
-    st.warning("Risk Engine: BLOCKED — "+" · ".join(gate["reasons"]))
+    reasons=list(gate["reasons"])
+    if REMOTE and not worker_fresh:
+        reasons.append("Worker remoto no saludable/reciente")
+    st.warning("Risk Engine: BLOCKED — "+" · ".join(reasons))
 
 st.subheader("Centro de agentes")
 agent_cards=[
@@ -246,7 +337,7 @@ agent_cards=[
     ("STRATEGY","V4.2 + Fibonacci + estadística","BAJO DEMANDA"),
     ("SIZER","Stop, costos y riesgo 1,2%","ACTIVO"),
     ("PAPER EXECUTOR","Solo órdenes simuladas","PAPER"),
-    ("LOGGER & EQUITY","SQLite local, PnL y auditoría","ACTIVO"),
+    ("LOGGER & EQUITY","PostgreSQL y auditoría" if REMOTE else "SQLite local y auditoría","ACTIVO"),
 ]
 ca,cb,cc=st.columns(3)
 for i,(name,desc,status) in enumerate(agent_cards):
@@ -368,7 +459,7 @@ with tab_trade:
         "Registrar compra PAPER (sin dinero real)",
         type="primary",
         use_container_width=True,
-        disabled=(live is None or not gate["allowed"] or (method=="Señal validada V4.2" and not eligible)),
+        disabled=(live is None or not allow_entry or (method=="Señal validada V4.2" and not eligible)),
         key="paper_enter",
     ):
         try:
@@ -409,8 +500,10 @@ with tab_trade:
                 f"Riesgo estimado **{tr['estimated_stop_loss_usdt']:.3f} USDT**"
             )
             st.caption(
-                "El cierre automático se evalúa al abrir/refrescar esta página. "
-                "No existe un proceso continuo PAPER cuando está cerrada."
+                "En modo remoto, GitHub Actions revisa cierres programados incluso con el panel cerrado; "
+                "la ejecución puede retrasarse. En modo local, los cierres se evalúan al refrescar la página."
+                if REMOTE else
+                "El cierre virtual se evalúa al abrir/refrescar esta página; no hay worker local permanente."
             )
             if st.button(
                 f"Cerrar manualmente PAPER {tr['symbol']}",
@@ -487,5 +580,6 @@ with st.expander("Reiniciar laboratorio PAPER (borra únicamente datos virtuales
 st.caption(
     "Trader Agent Pro Terminal · PREVIEW de la rama de desarrollo. "
     "Riesgo 1,2% estimado (no garantizado frente a gaps) · "
+    "Persistencia PostgreSQL opcional, worker programado sin garantías de tiempo real · "
     "No automatiza trading real ni sustituye la validación del broker."
 )
