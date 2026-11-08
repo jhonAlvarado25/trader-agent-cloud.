@@ -32,3 +32,5 @@ jobs:
           PY
       - name: Simulated account risk and journal tests
         run: python -m unittest discover -s tests -p 'test_paper_engine_pro.py' -v
+      - name: Streamlit dashboard render smoke
+        run: python -m unittest discover -s tests -p 'test_terminal_pro_ui.py' -v
