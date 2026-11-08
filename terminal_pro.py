@@ -293,6 +293,62 @@ except Exception as exc:
                     report["Código SQLSTATE"] = (
                         str(getattr(diagnostic_error, "sqlstate", None) or "NO DISPONIBLE")
                     )
+                    # Clasificar sin imprimir el texto original: algunos drivers
+                    # incluyen hosts, usuarios y parámetros de conexión.
+                    error_text = str(diagnostic_error).lower()
+                    if "password authentication failed" in error_text or "authentication failed" in error_text:
+                        category = "CONTRASEÑA O AUTENTICACIÓN RECHAZADA"
+                    elif "tenant or user not found" in error_text or "tenant not found" in error_text:
+                        category = "IDENTIFICADOR DEL PROYECTO O USUARIO POOLER"
+                    elif "could not translate host name" in error_text or "name or service not known" in error_text or "nodename nor servname" in error_text:
+                        category = "NO SE PUDO RESOLVER EL HOST (DNS)"
+                    elif "timeout" in error_text or "timed out" in error_text:
+                        category = "TIEMPO DE CONEXIÓN AGOTADO"
+                    elif "connection refused" in error_text:
+                        category = "PUERTO RECHAZADO"
+                    elif "network is unreachable" in error_text or "no route to host" in error_text:
+                        category = "RED SIN RUTA HACIA EL SERVIDOR"
+                    elif "ssl" in error_text or "tls" in error_text or "certificate" in error_text:
+                        category = "NEGOCIACIÓN SEGURA SSL/TLS"
+                    elif "server closed" in error_text or "connection closed" in error_text:
+                        category = "SERVIDOR CERRÓ LA CONEXIÓN"
+                    elif "role" in error_text and "does not exist" in error_text:
+                        category = "USUARIO POSTGRESQL INEXISTENTE"
+                    elif "database" in error_text and "does not exist" in error_text:
+                        category = "BASE DE DATOS INEXISTENTE"
+                    else:
+                        category = "NO DETERMINADA; REVISAR RED Y CREDENCIALES"
+                    report["Motivo probable (sin datos privados)"] = category
+                    report["Proyecto correcto en usuario"] = (
+                        "SÍ" if str(options.get("user","")) ==
+                        "postgres.ezxugazffghtdefpmrex" else "REVISAR"
+                    )
+                    report["Región del host"] = (
+                        "sa-east-1" if "sa-east-1" in str(options.get("host",""))
+                        else "REVISAR"
+                    )
+                    try:
+                        import socket
+                        host = str(options.get("host", ""))
+                        port = int(options.get("port", "5432"))
+                        socket.getaddrinfo(
+                            host, port, family=socket.AF_INET, type=socket.SOCK_STREAM
+                        )
+                        report["DNS IPv4"] = "CORRECTO"
+                        try:
+                            with socket.create_connection((host, port), timeout=5):
+                                report["Puerto TCP 5432"] = "ACCESIBLE"
+                        except OSError as network_error:
+                            if isinstance(network_error, TimeoutError):
+                                report["Puerto TCP 5432"] = "TIEMPO AGOTADO"
+                            elif isinstance(network_error, ConnectionRefusedError):
+                                report["Puerto TCP 5432"] = "RECHAZADO"
+                            else:
+                                report["Puerto TCP 5432"] = "SIN CONEXIÓN"
+                    except socket.gaierror:
+                        report["DNS IPv4"] = "FALLÓ"
+                    except Exception:
+                        report["Prueba de red"] = "NO DISPONIBLE"
             st.session_state["paper_pg_diagnostic_safe"] = report
         if "paper_pg_diagnostic_safe" in st.session_state:
             st.json(st.session_state["paper_pg_diagnostic_safe"])
