@@ -36,3 +36,6 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_terminal_pro_ui.py' -v
       - name: PostgreSQL adapter and scheduled worker tests
         run: python -m unittest discover -s tests -p 'test_paper_persistence_worker.py' -v
+
+      - name: Durable PAPER backend and worker tests
+        run: python -m unittest discover -s tests -p 'test_paper_phase_two.py' -v
