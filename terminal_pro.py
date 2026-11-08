@@ -21,6 +21,7 @@ from streamlit_autorefresh import st_autorefresh
 from config import CFG
 from market import get_klines, get_live_price
 from auto_decision_v42 import automatic_recommendation, enrich_auto
+from paper_pg_backend import is_postgres_target
 from paper_engine_pro import (
     RISK_FRACTION,
     DAILY_LOSS_LIMIT,
@@ -53,7 +54,10 @@ def secret_value(key: str) -> str:
 
 
 db_url=secret_value("TRADER_PAPER_DATABASE_URL")
-REMOTE=bool(db_url)
+if db_url and not is_postgres_target(db_url):
+    st.error("La conexión PAPER es inválida: se requiere una URI PostgreSQL privada.")
+    st.stop()
+REMOTE=is_postgres_target(db_url) if db_url else False
 DB_PATH=db_url if REMOTE else Path(os.getenv("TRADER_PAPER_DB", ".state/pro_terminal_paper.db"))
 
 # La primera versión usa contraseña de acceso a la aplicación. El modo
