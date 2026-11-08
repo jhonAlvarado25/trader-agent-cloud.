@@ -291,6 +291,7 @@ def _close_in_transaction(
     trade: dict,
     price: float,
     reason: str,
+    resolved_at_utc: str | None = None,
 ) -> dict:
     if trade["status"] != "OPEN":
         raise PaperRiskBlocked("Posición ya cerrada.")
@@ -302,7 +303,7 @@ def _close_in_transaction(
     exit_fee = exit_gross*FEE_FRACTION
     proceeds = exit_gross-exit_fee
     pnl = proceeds-float(trade["committed_usdt"])
-    now = utc_now()
+    now = resolved_at_utc or utc_now()
     con.execute(
         """UPDATE trades SET status='CLOSED',closed_at_utc=?,exit_reason=?,
             exit_fill=?,exit_fee_usdt=?,net_pnl_usdt=? WHERE id=? AND status='OPEN'""",
@@ -390,7 +391,8 @@ def paper_settle_candles(
                     reason="TP"
                 else:
                     continue
-                closed.append(_close_in_transaction(con,trade,ref,reason))
+                close_time_text = close_t.astimezone(timezone.utc).isoformat() if close_t is not None else utc_now()
+                closed.append(_close_in_transaction(con,trade,ref,reason,resolved_at_utc=close_time_text))
                 break
     return closed
 
