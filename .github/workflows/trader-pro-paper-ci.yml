@@ -25,7 +25,7 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Check syntax and imports
         run: |
-          python -m py_compile paper_engine_pro.py terminal_pro.py auto_decision_v42.py
+          python -m py_compile paper_engine_pro.py paper_pg_backend.py paper_worker_pro.py terminal_pro.py auto_decision_v42.py
           python - <<'PY'
           import paper_engine_pro
           print("PAPER engine import OK - no private Binance trading endpoints")
@@ -34,3 +34,5 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_paper_engine_pro.py' -v
       - name: Streamlit dashboard render smoke
         run: python -m unittest discover -s tests -p 'test_terminal_pro_ui.py' -v
+      - name: PostgreSQL adapter and scheduled worker tests
+        run: python -m unittest discover -s tests -p 'test_paper_persistence_worker.py' -v
