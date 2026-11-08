@@ -230,8 +230,73 @@ try:
 except Exception as exc:
     st.error(
         "No fue posible inicializar el almacenamiento PAPER. "
-        f"Tipo de error: {type(exc).__name__}. Revise la conexión segura."
+        f"Tipo de error: {type(exc).__name__}."
     )
+    # Nunca mostrar la excepción en texto: podría incluir el DSN y la contraseña.
+    if REMOTE:
+        st.caption(
+            "Prueba segura de la URI y las tablas PAPER: solo lectura. "
+            "No accede a Binance ni modifica operaciones."
+        )
+        if st.button("Diagnosticar PostgreSQL (seguro)", key="paper_pg_diagnose"):
+            report = {}
+            try:
+                from psycopg.conninfo import conninfo_to_dict
+                options = conninfo_to_dict(db_url)
+                report["Formato URI PostgreSQL"] = "VÁLIDO"
+                report["Contraseña en URI"] = (
+                    "PRESENTE" if bool(options.get("password")) else "AUSENTE"
+                )
+                report["Host Session pooler"] = (
+                    "VÁLIDO"
+                    if str(options.get("host", "")).endswith(".pooler.supabase.com")
+                    else "REVISAR"
+                )
+                report["Usuario Supabase"] = (
+                    "VÁLIDO"
+                    if str(options.get("user", "")).startswith("postgres.")
+                    else "REVISAR"
+                )
+                report["Puerto 5432"] = (
+                    "VÁLIDO" if str(options.get("port", "")) == "5432"
+                    else "REVISAR"
+                )
+            except Exception as diagnostic_error:
+                report["Formato URI PostgreSQL"] = "INVÁLIDO"
+                report["Error de interpretación"] = type(diagnostic_error).__name__
+            if report.get("Formato URI PostgreSQL") == "VÁLIDO":
+                try:
+                    import psycopg
+                    with psycopg.connect(
+                        db_url, connect_timeout=10, sslmode="require",
+                        prepare_threshold=None,
+                    ) as db_probe:
+                        db_probe.execute("SELECT 1").fetchone()
+                        report["Conexión real PostgreSQL"] = "CORRECTA"
+                        rows = db_probe.execute(
+                            "SELECT to_regclass('trader_pro_paper.account'), "
+                            "to_regclass('trader_pro_paper.trades'), "
+                            "to_regclass('trader_pro_paper.events'), "
+                            "to_regclass('trader_pro_paper.worker_status')"
+                        ).fetchone()
+                        report["Cuatro tablas accesibles"] = (
+                            "SÍ" if rows and all(item is not None for item in rows)
+                            else "NO"
+                        )
+                        report["Diagnóstico"] = (
+                            "La conexión funciona. Revisar inicialización SQL "
+                            "del motor PAPER."
+                        )
+                except Exception as diagnostic_error:
+                    report["Conexión real PostgreSQL"] = "FALLÓ"
+                    report["Tipo de error"] = type(diagnostic_error).__name__
+                    report["Código SQLSTATE"] = (
+                        str(getattr(diagnostic_error, "sqlstate", None) or "NO DISPONIBLE")
+                    )
+            st.session_state["paper_pg_diagnostic_safe"] = report
+        if "paper_pg_diagnostic_safe" in st.session_state:
+            st.json(st.session_state["paper_pg_diagnostic_safe"])
+            st.caption("Solo se muestran estados y códigos, nunca contraseñas ni URI.")
     st.stop()
 
 assets=list(CFG.symbols)
