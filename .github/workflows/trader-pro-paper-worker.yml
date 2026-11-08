@@ -1,0 +1,45 @@
+name: Trader Pro PAPER Worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "4,9,14,19,24,29,34,39,44,49,54,59 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trader-pro-paper-worker
+  cancel-in-progress: false
+
+jobs:
+  paper-monitor:
+    if: ${{ vars.TRADER_PAPER_WORKER_ENABLED == 'yes' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout PAPER development branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/trader-pro-terminal-paper
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Review open PAPER positions without real trades
+        env:
+          TRADER_PAPER_DATABASE_URL: ${{ secrets.TRADER_PAPER_DATABASE_URL }}
+          TRADER_PAPER_WORKER_ENABLED: "yes"
+        run: python paper_worker_pro.py
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "Trader Pro PAPER worker. Never creates real Binance orders." >> "$GITHUB_STEP_SUMMARY"
+          echo "Monitoring is best effort, scheduled every 5 minutes and may be delayed by GitHub." >> "$GITHUB_STEP_SUMMARY"
