@@ -23,7 +23,6 @@ class TerminalAppSmokeTests(unittest.TestCase):
                     labels=[x.label for x in app.metric]
                     self.assertIn("Patrimonio PAPER",labels)
                     self.assertIn("Riesgo máx. próximo trade",labels)
-                    self.assertIn("0", str(app.session_state._state) if False else "0")
 
 
 if __name__=="__main__":
